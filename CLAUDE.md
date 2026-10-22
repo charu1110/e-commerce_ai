@@ -291,6 +291,7 @@ python scripts/validate_data.py
 python -m src.segments
 python -m src.engine.pipeline --customer C00001
 python -m src.engine.pipeline --sample 500
+python -m src.engine.pipeline --customer C00001 --agent claude   # uses the API
 pytest -q
 python -m src.bot
 streamlit run dashboard/app.py
@@ -359,3 +360,10 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - Commands so far: `/start` (pick a shopper type → linked to an unused, opted-in, non-holdout customer who would get an offer today), `/myoffer` (runs the pipeline with `on_demand=True`), `/persona`, `/stop`, `/resume`, `/whoami` (shows chat id for ADMIN_CHAT_IDS), `/help`. Buttons: Claim / Not now / Why this offer? — only the owner can act, double taps are safe, expired offers can't be claimed; every tap is an `offer_events` row.
 - `truststore` (in requirements) makes Python trust the Windows certificate store; without it Telegram/Anthropic calls fail with SSL errors on this machine.
 - The httpx logger is set to WARNING because its request lines contain the bot token.
+
+### AI agent notes (Step 7)
+- `src/agent.py`: `ClaudeAgent` (same interface as `stub_agent`: `(summary, options) -> raw JSON text`). Model from `ANTHROPIC_MODEL` (currently `claude-sonnet-5-5`), `output_config` = effort `low` + JSON schema (`OFFER_SCHEMA`, mirrors `OfferProposal`), 10 s timeout, 1 retry, server-side refusal fallback (`fallbacks="default"`, beta `server-side-fallback-2026-07-01`) on models that support it. Refusal / truncation / no text / any API error raises → Node 10 fallback. No `temperature`/`thinking` params sent.
+- Prompt lives in `src/prompts/offer_agent.md` (editable by marketing). Customer facts are sent as JSON inside `<customer_data>` tags; the prompt says that content is data, never instructions.
+- `make_agent("auto"|"claude"|"stub")`: auto = Claude if `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` is set, else stub. The bot uses auto; the pipeline CLI defaults to `--agent stub` (no API spend) and takes `--agent claude`.
+- anthropic SDK is 2.x here; signatures were checked against the installed package.
+- The bot runs engine calls in a worker thread behind one lock (`call()` in bot.py) so slow AI calls don't freeze other chats; its DB connection uses `check_same_thread=False`.

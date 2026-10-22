@@ -6,16 +6,19 @@ Thin layer over src/bot_logic.py. Secrets come from .env only and are never logg
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import threading
 
 import truststore
 from dotenv import load_dotenv
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ParseMode
+from telegram.constants import ChatAction, ParseMode
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from src import db
+from src.agent import make_agent
 from src.bot_logic import SEGMENT_LABELS, BotService
 from src.engine.state import Deps
 
@@ -40,6 +43,20 @@ def service(context: ContextTypes.DEFAULT_TYPE) -> BotService:
     return context.application.bot_data["service"]
 
 
+_db_lock = threading.Lock()
+
+
+async def call(fn, *args):
+    """Run engine work in a worker thread (AI calls take seconds) without blocking other chats.
+
+    One lock serialises database access, since SQLite allows one writer at a time.
+    """
+    def run():
+        with _db_lock:
+            return fn(*args)
+    return await asyncio.to_thread(run)
+
+
 def offer_buttons(decision_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("Claim 🎁", callback_data=f"claim:{decision_id}"),
@@ -60,9 +77,9 @@ async def reply(update: Update, text: str, markup=None) -> None:
 # ---------------------------------------------------------------- commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     svc, chat_id = service(context), update.effective_chat.id
-    cid = svc.linked_customer(chat_id)
+    cid = await call(svc.linked_customer, chat_id)
     if cid:
-        await reply(update, svc.who_card(cid))
+        await reply(update, await call(svc.who_card, cid))
         return
     await reply(update, HELP + "\n\n<b>First, who do you want to be?</b>", persona_buttons())
 
@@ -72,18 +89,19 @@ async def persona(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def myoffer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text, decision_id = service(context).my_offer(update.effective_chat.id)
+    await context.bot.send_chat_action(update.effective_chat.id, ChatAction.TYPING)
+    text, decision_id = await call(service(context).my_offer, update.effective_chat.id)
     await reply(update, text, offer_buttons(decision_id) if decision_id else None)
 
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    ok = service(context).set_opt_in(update.effective_chat.id, False)
+    ok = await call(service(context).set_opt_in, update.effective_chat.id, False)
     await reply(update, "🔕 Done. You won't get offers any more. /resume to turn them back on."
                 if ok else "Tap /start first.")
 
 
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    ok = service(context).set_opt_in(update.effective_chat.id, True)
+    ok = await call(service(context).set_opt_in, update.effective_chat.id, True)
     await reply(update, "🔔 Offers are back on. Try /myoffer." if ok else "Tap /start first.")
 
 
@@ -104,19 +122,19 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if action == "persona":
         await query.answer("Finding you a customer…")
-        cid = svc.link(chat_id, None if arg == "any" else arg)
+        cid = await call(svc.link, chat_id, None if arg == "any" else arg)
         if cid is None:
             await query.message.reply_text("Sorry, no free customer of that type. Pick another.",
                                            reply_markup=persona_buttons())
             return
         await query.edit_message_reply_markup(None)
-        await query.message.reply_text(svc.who_card(cid), parse_mode=ParseMode.HTML)
+        await query.message.reply_text(await call(svc.who_card, cid), parse_mode=ParseMode.HTML)
         return
 
     if not arg.isdigit():
         await query.answer()
         return
-    result = svc.handle_button(chat_id, action, int(arg))
+    result = await call(svc.handle_button, chat_id, action, int(arg))
     await query.answer(result.toast)
     if result.append_to_card:
         await query.edit_message_text(query.message.text_html + "\n\n" + result.append_to_card,
@@ -158,9 +176,14 @@ def main() -> None:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         raise SystemExit("TELEGRAM_BOT_TOKEN is missing. Copy .env.example to .env and fill it in.")
-    conn = db.connect()
+    conn = db.connect(check_same_thread=False)  # used from worker threads, guarded by _db_lock
+    agent, agent_name = make_agent("auto")
+    if agent_name == "stub":
+        log.warning("No ANTHROPIC_API_KEY in .env: offers come from the rule-based agent.")
+    else:
+        log.info("Offer agent: %s", agent_name)
     log.info("Loading customers and rules…")
-    svc = BotService(conn, Deps.load(conn, on_demand=True, channel="telegram"))
+    svc = BotService(conn, Deps.load(conn, agent=agent, agent_name=agent_name, on_demand=True, channel="telegram"))
     log.info("Ready: %d customers, %d already linked to Telegram.", len(svc.segments),
              conn.execute("SELECT COUNT(*) FROM customers WHERE telegram_chat_id IS NOT NULL").fetchone()[0])
     build_app(token, svc).run_polling(allowed_updates=Update.ALL_TYPES)

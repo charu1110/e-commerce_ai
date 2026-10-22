@@ -125,6 +125,8 @@ def main() -> None:
     parser.add_argument("--today", type=date.fromisoformat, help="pretend today is YYYY-MM-DD")
     parser.add_argument("--hour", type=int, default=None, help="pretend it is this hour (0-23)")
     parser.add_argument("--write", action="store_true", help="log decisions to the database")
+    parser.add_argument("--agent", choices=["stub", "claude", "auto"], default="stub",
+                        help="who writes offers: stub (default, free), claude (uses the API), auto")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--db", default=str(db.DB_PATH))
     args = parser.parse_args()
@@ -137,7 +139,11 @@ def main() -> None:
     if args.hour is not None:
         now = datetime.combine(now.date(), time(args.hour, 0))
     conn = db.connect(args.db)
-    deps = Deps.load(conn, dry_run=not args.write, channel="cli")
+    from dotenv import load_dotenv
+    from src.agent import make_agent
+    load_dotenv()
+    agent, agent_name = make_agent(args.agent)
+    deps = Deps.load(conn, agent=agent, agent_name=agent_name, dry_run=not args.write, channel="cli")
 
     if args.customer:
         print(explain(run_pipeline(args.customer, deps, now)))

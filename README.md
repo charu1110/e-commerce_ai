@@ -72,6 +72,20 @@ tracking. Each decision is written to `decision_log`. Runs are dry runs unless y
 When the daily budget is limited, customers are served in priority order: most likely to churn,
 most valuable, and least likely to buy anyway come first.
 
+## The AI offer agent
+
+Claude picks one offer from the options the rules allow and writes the message. Put your key in
+`.env` as `ANTHROPIC_API_KEY` (model in `ANTHROPIC_MODEL`). The prompt is plain text in
+`src/prompts/offer_agent.md`, so tone and guidance can be changed without code.
+
+Claude's answer is never trusted on its own: every proposal goes through the guardrail validator,
+and if Claude errors, times out (10 s, 1 retry), declines, or breaks a rule, a pre-approved offer
+from `config/offers.yaml` is sent instead. Without a key, a rule-based agent writes the offers.
+
+```
+python -m src.engine.pipeline --customer C00001 --agent claude
+```
+
 ## Telegram bot
 
 1. Create a bot with @BotFather and put its token in `.env` as `TELEGRAM_BOT_TOKEN`.

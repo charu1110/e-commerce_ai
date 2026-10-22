@@ -1,15 +1,17 @@
 """Offer agent (Node 5).
 
-`stub_agent` is a rule-based stand-in with the SAME interface as the real Claude agent
-(Step 7): it receives a compact customer summary plus the menu of allowed options and
-returns raw JSON text. It also keeps the system usable with no API key.
+Two agents with the same interface - (customer summary, allowed options) -> raw JSON text:
+- `ClaudeAgent`: Claude picks an offer and writes the message (prompt in prompts/offer_agent.md).
+- `stub_agent`: a rule-based stand-in that keeps the system usable with no API key.
 
-Like the real agent, its output is never trusted: the guardrail validator checks it.
+Neither agent's output is trusted: the guardrail validator (Node 6) checks every proposal.
 """
 from __future__ import annotations
 
 import json
 import math
+import os
+from pathlib import Path
 
 from src.formatting import indian_number, plain_number
 from src.offers import category_label
@@ -119,3 +121,106 @@ def stub_agent(summary: dict, options: list[dict]) -> str:
     if offer is None:
         raise ValueError("no allowed options to choose from")
     return json.dumps(offer, ensure_ascii=False)
+
+
+# ============================================================ real AI agent (Claude)
+PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "offer_agent.md"
+DEFAULT_MODEL = "claude-sonnet-5-5"
+# Models that accept the server-side refusal fallback ("default" routing).
+SERVER_FALLBACK_MODELS = {"claude-sonnet-5-5", "claude-opus-5-5", "claude-opus-5", "claude-fable-5-1"}
+
+# JSON shape Claude must return. The API enforces the shape; our validator still checks every value.
+OFFER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "offer_type": {"type": "string",
+                       "enum": ["percent_off", "flat_off", "free_delivery", "bonus_points", "early_access"]},
+        "value": {"type": "number"},
+        "category": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "expiry_days": {"type": "integer"},
+        "min_order_inr": {"type": "number"},
+        "message": {"type": "string"},
+        "reason": {"type": "string"},
+    },
+    "required": ["offer_type", "value", "category", "expiry_days", "min_order_inr", "message", "reason"],
+    "additionalProperties": False,
+}
+
+
+class AgentRefusal(RuntimeError):
+    """Claude declined the request; the pipeline falls back to a pre-approved offer."""
+
+
+def build_user_message(summary: dict, options: list[dict]) -> str:
+    """Customer facts go in as JSON inside tags, so they are read as data, never as instructions."""
+    return (
+        "<customer_data>\n" + json.dumps(summary, ensure_ascii=False, indent=1) + "\n</customer_data>\n\n"
+        "<allowed_options>\n" + json.dumps(options, ensure_ascii=False, indent=1) + "\n</allowed_options>\n\n"
+        "Write the offer as JSON."
+    )
+
+
+class ClaudeAgent:
+    """Node 5 with Claude: same interface as stub_agent (summary, options) -> raw JSON text.
+
+    10 s timeout and 1 retry, as the brief requires; any error, refusal or truncation
+    raises, and the pipeline sends a pre-approved fallback instead.
+    """
+
+    def __init__(self, model: str | None = None, client=None, timeout: float = 10.0, max_retries: int = 1,
+                 effort: str = "low", prompt_path: Path = PROMPT_PATH):
+        self.model = model or os.getenv("ANTHROPIC_MODEL") or DEFAULT_MODEL
+        self.effort = effort
+        self.system_prompt = prompt_path.read_text(encoding="utf-8")
+        if client is None:
+            import anthropic
+            import truststore
+            truststore.inject_into_ssl()  # trust the Windows certificate store (antivirus / proxy SSL)
+            client = anthropic.Anthropic(timeout=timeout, max_retries=max_retries)
+        self.client = client
+        self.__name__ = f"claude:{self.model}"
+
+    def request(self, summary: dict, options: list[dict]) -> dict:
+        """The exact API request (kept separate so tests can inspect it)."""
+        req = dict(
+            model=self.model,
+            max_tokens=2000,
+            system=[{"type": "text", "text": self.system_prompt, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": build_user_message(summary, options)}],
+            output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": OFFER_SCHEMA}},
+        )
+        if self.model in SERVER_FALLBACK_MODELS:
+            # If Claude declines (safety classifier), the API retries on a fallback model in the same call.
+            req.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+        return req
+
+    def __call__(self, summary: dict, options: list[dict]) -> str:
+        req = self.request(summary, options)
+        if "betas" in req:
+            response = self.client.beta.messages.create(**req)
+        else:
+            response = self.client.messages.create(**req)
+        if response.stop_reason == "refusal":
+            details = getattr(response, "stop_details", None)
+            raise AgentRefusal(f"declined ({getattr(details, 'category', None) or 'no category'})")
+        if response.stop_reason == "max_tokens":
+            raise ValueError("response was cut off before the offer was complete")
+        text = next((b.text for b in response.content if b.type == "text"), None)
+        if not text:
+            raise ValueError("no text in the response")
+        return text
+
+
+def has_claude_credentials() -> bool:
+    return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"))
+
+
+def make_agent(kind: str = "auto"):
+    """Pick the agent: 'claude', 'stub', or 'auto' (Claude if a key is configured, else the stub).
+
+    Returns (agent, name).
+    """
+    if kind == "stub" or (kind == "auto" and not has_claude_credentials()):
+        return stub_agent, "stub"
+    agent = ClaudeAgent()
+    return agent, agent.__name__
