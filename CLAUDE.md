@@ -335,3 +335,10 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - **7th segment `occasional`** (rare buyers, window shoppers, cart abandoners) — needs its own entry in `rules.yaml` `segment_rules`.
 - Every segment comes with a plain-English reason (reused by `/why`, audit log, dashboard).
 - `python -m src.segments` prints segment sizes, scores, and a persona-vs-segment match table (80–100% match).
+
+### Rules & guardrails notes (Step 4)
+- `config/rules.yaml` adds to the spec: `max_bonus_points`, `min_profit_after_discount_inr`, a `costs` section (delivery fee, point value), `occasional` segment rules, an `eligibility` section (buy-anyway skip, discount-addiction guard, return-abuse guard), `message.max_emojis`, `message.banned_claims`.
+- `src/guardrails.py`: `Rules` pydantic model (typos/out-of-range values in rules.yaml raise errors), strict `OfferProposal`, `ValidationContext` (facts gathered by Nodes 1-4), `validate()` runs 14 named checks (labels in `CHECK_LABELS`) and reports ALL failures. Also `in_quiet_hours()`, `discount_limit_pct()`, `expected_cost()`.
+- Cost model: percent offers are capped at `max_flat_discount_inr` ("up to Rs 500"); flat offers are converted to % of their min order for cap checks; store-wide offers use the strictest category cap and thinnest margin.
+- `config/offers.yaml` + `src/offers.py`: pre-approved catalogue, `category: favourite` resolves to cart/favourite category, `fallback_offer()` tries the segment's list in order and returns the first that passes `validate()`, else nothing.
+- Windows console can't print the rupee sign; set `PYTHONIOENCODING=utf-8` when printing messages in a terminal.

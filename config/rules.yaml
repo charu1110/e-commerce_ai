@@ -1,0 +1,58 @@
+# config/rules.yaml — the limits every offer must respect. Edit these numbers, no coding needed.
+# The AI can only choose INSIDE these limits, and code re-checks every offer before it is sent.
+
+global:
+  max_discount_pct: 20          # never give more than 20% off
+  max_flat_discount_inr: 500    # never more than Rs 500 off (also caps % offers: "20% off, up to Rs 500")
+  min_order_value_inr: 299      # offers apply only above this cart value
+  daily_budget_inr: 20000       # total discount money we can spend per day (festivals can raise it, see occasions.yaml)
+  cooldown_days: 7              # max 1 offer per customer per 7 days
+  skip_if_bought_within_days: 3 # just bought? don't send an offer
+  holdout_pct: 10               # % of customers who get no offer (to measure real impact)
+  quiet_hours: [22, 8]          # no messages 10pm-8am (offers wait until the customer's usual shopping hour)
+  offer_validity_days: [2, 7]   # expiry must be within this range
+  allow_stacking: false         # false = a customer can't hold two live offers at once
+  max_bonus_points: 500         # never give more than 500 bonus points in one offer
+  min_profit_after_discount_inr: 0  # the order must still make money after the discount (expected margin minus offer cost)
+
+costs:                          # how we estimate what an offer costs us
+  delivery_fee_inr: 49          # free delivery costs us Rs 49 per order
+  point_value_inr: 0.25         # 1 reward point is worth Rs 0.25 to the customer
+  early_access_cost_inr: 0      # early access to a sale costs us nothing
+
+category_max_discount_pct:      # protects margin per category
+  electronics: 5
+  mobiles: 5
+  grocery: 5
+  home: 15
+  beauty: 20
+  fashion: 20
+  footwear: 20
+  # offers that don't name a category ("store-wide") must respect the strictest number above
+
+segment_rules:                  # what each customer group may get
+  vip: { max_discount_pct: 0, allowed_types: [early_access, bonus_points, free_delivery] }
+  loyal: { max_discount_pct: 5, allowed_types: [bonus_points, free_delivery] }
+  lapsing: { max_discount_pct: 20, allowed_types: [percent_off, flat_off, free_delivery, bonus_points] }
+  deal_hunter: { max_discount_pct: 10, allowed_types: [percent_off, bonus_points] }
+  new: { max_discount_pct: 15, allowed_types: [percent_off, free_delivery] }
+  hibernating: { max_discount_pct: 15, allowed_types: [percent_off, flat_off] }
+  occasional: { max_discount_pct: 10, allowed_types: [free_delivery, percent_off, bonus_points] }
+
+eligibility:                    # who should NOT get a discount
+  skip_if_buy_anyway_above: 0.6 # customers this likely (60%+) to buy this week anyway get no offer
+  discount_addiction_claims: 3  # deal hunter who claimed 3 discounts in a row gets points instead of money off
+  return_abuse_rate: 0.4        # customers who return 40%+ of orders get no money-off ...
+  return_abuse_categories: [fashion, footwear]  # ... on these categories
+
+escalation_ladder:              # if ignored, next offer after `wait_days`
+  - { step: 1, type: free_delivery, wait_days: 3 }
+  - { step: 2, type: percent_off, value: 10, wait_days: 3 }
+  - { step: 3, type: percent_off, value: 15, wait_days: 5 }
+  - { step: 4, type: stop }
+
+message:
+  max_length_chars: 400
+  max_emojis: 1                 # keep it classy: at most one emoji
+  banned_phrases: ["last chance ever", "guaranteed", "free money", "100% off", "lowest price ever"]
+  banned_claims: ["lowest price", "100% original", "limited stock", "only few left", "best in india", "free gift"]

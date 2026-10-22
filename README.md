@@ -39,6 +39,23 @@ lapsing, vip, deal_hunter, loyal, occasional. Each segment comes with a plain-En
 Thresholds are in `config/segments.yaml`. The command also prints how well segments match the
 hidden personas (80-100%).
 
+## Rules and offers (marketing can edit these)
+
+| File | What it controls |
+|---|---|
+| `config/rules.yaml` | Every limit: max discount, per-category and per-segment caps, daily budget, cooldown, holdout %, quiet hours, expiry range, banned phrases |
+| `config/offers.yaml` | Pre-approved fallback offers and their message templates, per segment |
+| `config/segments.yaml` | How customers are grouped (lapsed, VIP, loyal, ...) |
+| `config/occasions.yaml` | Festival calendar |
+
+Every offer, whether written by the AI or taken from `offers.yaml`, is checked by `src/guardrails.py`
+(plain Python, no AI) against 14 rules before it is sent: offer type allowed for the segment, discount
+caps, flat cap and minimum order, daily budget, customer eligibility (opt-out, holdout, cooldown, just
+bought, kill switch, discount-addiction and return-abuse guards), expiry and stacking, profit after
+discount, and message checks (length, banned phrases, numbers match the offer, no other customer's
+data, no made-up claims, style). If a value in `rules.yaml` is mistyped or out of range, loading fails
+with a clear error instead of silently ignoring it.
+
 ## Tests
 
 ```

@@ -1,0 +1,141 @@
+# config/offers.yaml — pre-approved offers. Edit freely, no coding needed.
+#
+# Each offer:
+#   offer_type     percent_off / flat_off / free_delivery / bonus_points / early_access
+#   value          % for percent_off, Rs for flat_off, points for bonus_points (0 otherwise)
+#   category       favourite = the customer's open-cart or favourite category; leave empty for store-wide
+#   min_order_inr  offer works only above this order value
+#   expiry_days    how long the offer stays valid
+#   headline       bold first line of the Telegram card
+#   message        the text. Placeholders: {first_name} {value} {category} {min_order} {expiry_days}
+#
+# These are used when the AI's offer fails a rule, the AI is down, or times out.
+# They are STILL checked against rules.yaml before sending.
+
+offers:
+  VIP_EARLY:
+    offer_type: early_access
+    value: 0
+    category:
+    min_order_inr: 299
+    expiry_days: 3
+    headline: "Members first, {first_name}"
+    message: "Hi {first_name}, as one of our most valued customers you get early access to our next big sale, before anyone else. Valid for {expiry_days} days."
+
+  VIP_POINTS_300:
+    offer_type: bonus_points
+    value: 300
+    category:
+    min_order_inr: 999
+    expiry_days: 5
+    headline: "A thank-you from us"
+    message: "Hi {first_name}, thank you for shopping with us! Get {value} bonus points on your next order above ₹{min_order}. Valid for {expiry_days} days."
+
+  LOYAL_POINTS_200:
+    offer_type: bonus_points
+    value: 200
+    category:
+    min_order_inr: 799
+    expiry_days: 5
+    headline: "Double the love, {first_name}"
+    message: "Hi {first_name}, you're one of our regulars! Enjoy {value} bonus points on your next order above ₹{min_order}. Valid for {expiry_days} days."
+
+  FREE_DELIVERY:
+    offer_type: free_delivery
+    value: 0
+    category:
+    min_order_inr: 799
+    expiry_days: 3
+    headline: "Delivery is on us"
+    message: "Hi {first_name}, your next order above ₹{min_order} ships with free delivery. Valid for {expiry_days} days."
+
+  LAPSE_PCT15:
+    offer_type: percent_off
+    value: 15
+    category: favourite
+    min_order_inr: 999
+    expiry_days: 5
+    headline: "We miss you, {first_name}!"
+    message: "Hi {first_name}, it's been a while! Here's {value}% off {category} on orders above ₹{min_order}. Valid for {expiry_days} days."
+
+  LAPSE_FLAT150:
+    offer_type: flat_off
+    value: 150
+    category: favourite
+    min_order_inr: 999
+    expiry_days: 5
+    headline: "Come back for ₹150 off"
+    message: "Hi {first_name}, we saved something for you: ₹{value} off {category} on orders above ₹{min_order}. Valid for {expiry_days} days."
+
+  DEAL_POINTS_150:
+    offer_type: bonus_points
+    value: 150
+    category:
+    min_order_inr: 799
+    expiry_days: 4
+    headline: "Points that pay you back"
+    message: "Hi {first_name}, earn {value} bonus points on your next order above ₹{min_order}. Valid for {expiry_days} days."
+
+  DEAL_PCT10:
+    offer_type: percent_off
+    value: 10
+    category: favourite
+    min_order_inr: 799
+    expiry_days: 3
+    headline: "A deal picked for you"
+    message: "Hi {first_name}, take {value}% off {category} on orders above ₹{min_order}. Valid for {expiry_days} days."
+
+  NEW_PCT10:
+    offer_type: percent_off
+    value: 10
+    category: favourite
+    min_order_inr: 499
+    expiry_days: 7
+    headline: "Welcome, {first_name}!"
+    message: "Hi {first_name}, welcome aboard! Enjoy {value}% off {category} on orders above ₹{min_order}. Valid for {expiry_days} days."
+
+  HIBER_PCT15:
+    offer_type: percent_off
+    value: 15
+    category: favourite
+    min_order_inr: 999
+    expiry_days: 7
+    headline: "It's been too long, {first_name}"
+    message: "Hi {first_name}, we'd love to see you again. Here's {value}% off {category} on orders above ₹{min_order}. Valid for {expiry_days} days."
+
+  HIBER_FLAT200:
+    offer_type: flat_off
+    value: 200
+    category: favourite
+    min_order_inr: 1499
+    expiry_days: 7
+    headline: "₹200 to welcome you back"
+    message: "Hi {first_name}, here's ₹{value} off {category} on orders above ₹{min_order}. Valid for {expiry_days} days."
+
+  HIBER_PCT5:
+    offer_type: percent_off
+    value: 5
+    category: favourite
+    min_order_inr: 999
+    expiry_days: 7
+    headline: "Something small to say hello"
+    message: "Hi {first_name}, it's been a long time! Here's {value}% off {category} on orders above ₹{min_order}. Valid for {expiry_days} days."
+
+  OCC_POINTS_100:
+    offer_type: bonus_points
+    value: 100
+    category:
+    min_order_inr: 799
+    expiry_days: 4
+    headline: "A little something, {first_name}"
+    message: "Hi {first_name}, get {value} bonus points on your next order above ₹{min_order}. Valid for {expiry_days} days."
+
+# Tried top to bottom; the first offer that passes every rule is sent. If none pass, nothing is sent.
+fallbacks:
+  vip: [VIP_EARLY, VIP_POINTS_300, FREE_DELIVERY]
+  loyal: [LOYAL_POINTS_200, FREE_DELIVERY]
+  lapsing: [LAPSE_PCT15, LAPSE_FLAT150, FREE_DELIVERY]
+  deal_hunter: [DEAL_POINTS_150, DEAL_PCT10]
+  new: [NEW_PCT10, FREE_DELIVERY]
+  hibernating: [HIBER_PCT15, HIBER_FLAT200, HIBER_PCT5]
+  occasional: [FREE_DELIVERY, DEAL_PCT10, OCC_POINTS_100]

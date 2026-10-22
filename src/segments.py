@@ -17,18 +17,13 @@ import pandas as pd
 
 from src import db
 from src.features import compute_features, load_segment_config
+from src.formatting import indian_number
 
 SEGMENTS = ["new", "hibernating", "lapsing", "vip", "deal_hunter", "loyal", "occasional"]
 
 
 def _inr(x: float) -> str:
-    """Indian digit grouping: 817139 -> 'Rs 8,17,139'."""
-    s = f"{abs(round(x)):d}"
-    head, tail = s[:-3], s[-3:]
-    while len(head) > 2:
-        tail = f"{head[-2:]},{tail}"
-        head = head[:-2]
-    return "Rs " + (f"{head},{tail}" if head else tail)
+    return "Rs " + indian_number(x)
 
 
 def assign_segment(f: dict, config: dict | None = None) -> tuple[str, str]:
