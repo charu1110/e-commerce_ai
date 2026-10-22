@@ -8,3 +8,4 @@ Faker>=26.0
 streamlit>=1.38
 python-dotenv>=1.0
 pytest>=8.0
+truststore>=0.9      # trust the Windows certificate store (fixes SSL errors behind antivirus/proxies)

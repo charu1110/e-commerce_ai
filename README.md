@@ -72,6 +72,29 @@ tracking. Each decision is written to `decision_log`. Runs are dry runs unless y
 When the daily budget is limited, customers are served in priority order: most likely to churn,
 most valuable, and least likely to buy anyway come first.
 
+## Telegram bot
+
+1. Create a bot with @BotFather and put its token in `.env` as `TELEGRAM_BOT_TOKEN`.
+2. Run it:
+
+```
+python -m src.bot
+```
+
+3. In Telegram, open the bot and send `/start`. Pick a shopper type (lapsing regular, VIP, deal
+   hunter, ...) and you are linked to a synthetic customer of that type. Then:
+
+| Command | What it does |
+|---|---|
+| `/myoffer` | Runs the full pipeline for you now and shows the offer card (or why there is none) |
+| `/persona` | Become a different customer |
+| `/stop` / `/resume` | Opt out of / back into offers |
+| `/whoami` | Shows your chat id (put it in `ADMIN_CHAT_IDS` for admin commands) |
+| `/help` | All commands |
+
+Offer cards have **Claim 🎁**, **Not now** and **Why this offer?** buttons; every tap is logged.
+If you see SSL certificate errors, make sure `truststore` from `requirements.txt` is installed.
+
 ## Tests
 
 ```

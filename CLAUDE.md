@@ -353,3 +353,9 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - `run_batch` processes customers in budget-priority order (churn risk × value × not-buying-anyway) so the daily budget goes to the most valuable win-backs.
 - DB: `settings` table (`paused` = kill switch via `db.is_paused/set_setting`); extra `decision_log` columns are added in place by `db.connect()`.
 - CLI: `python -m src.engine.pipeline --customer C00001 [--hour 23] [--write]` or `--sample 500` (dry run unless `--write`).
+
+### Telegram bot notes (Step 6)
+- `src/bot_logic.py` (`BotService`) holds all bot behaviour, testable without Telegram; `src/bot.py` is a thin python-telegram-bot layer. Bot: @Offer_genrate_bot.
+- Commands so far: `/start` (pick a shopper type → linked to an unused, opted-in, non-holdout customer who would get an offer today), `/myoffer` (runs the pipeline with `on_demand=True`), `/persona`, `/stop`, `/resume`, `/whoami` (shows chat id for ADMIN_CHAT_IDS), `/help`. Buttons: Claim / Not now / Why this offer? — only the owner can act, double taps are safe, expired offers can't be claimed; every tap is an `offer_events` row.
+- `truststore` (in requirements) makes Python trust the Windows certificate store; without it Telegram/Anthropic calls fail with SSL errors on this machine.
+- The httpx logger is set to WARNING because its request lines contain the bot token.
