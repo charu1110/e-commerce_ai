@@ -1,0 +1,169 @@
+# config/occasions.yaml — festival & occasion calendar. Edit freely, no coding needed.
+#
+# Each occasion:
+#   name               what customers see in the message ("Happy Diwali!")
+#   windows            date ranges (YYYY-MM-DD) when the occasion is "on"; add next year's dates here
+#   demand_boost       how much more people shop in this window (1.0 = normal, 1.8 = 80% more)
+#   boosted_categories categories people buy more of, and where festival offers should go
+#   regions            optional: only customers in these regions (e.g. punjab) celebrate it
+#   budget_multiplier  daily offer budget is multiplied by this during the window (still capped by rules.yaml)
+#   target_segments    segments that should get festival offers (others get their normal offers)
+#   theme / emoji      tone hint for the AI message writer
+#
+# NOTE: dates are best estimates — please double-check against an official calendar before demo day.
+
+occasions:
+  navratri:
+    name: Navratri
+    windows:
+      - { start: 2025-09-22, end: 2025-10-01 }
+      - { start: 2026-10-11, end: 2026-10-19 }
+    demand_boost: 1.3
+    boosted_categories: [fashion, beauty, footwear]
+    budget_multiplier: 1.2
+    target_segments: [lapsing, deal_hunter, new]
+    theme: "9 nights, 9 looks — festive ethnic wear"
+    emoji: "✨"
+
+  dussehra:
+    name: Dussehra
+    windows:
+      - { start: 2025-10-02, end: 2025-10-02 }
+      - { start: 2026-10-20, end: 2026-10-20 }
+    demand_boost: 1.2
+    boosted_categories: [home, electronics]
+    budget_multiplier: 1.0
+    target_segments: [lapsing, hibernating]
+    theme: "victory of good — a fresh start"
+    emoji: "🏹"
+
+  karwa_chauth:
+    name: Karwa Chauth
+    windows:
+      - { start: 2025-10-06, end: 2025-10-10 }
+      - { start: 2026-10-25, end: 2026-10-29 }
+    demand_boost: 1.3
+    boosted_categories: [beauty, fashion]
+    budget_multiplier: 1.1
+    target_segments: [vip, loyal, lapsing]
+    theme: "gifting, sarees and shringar"
+    emoji: "🌙"
+
+  dhanteras:
+    name: Dhanteras
+    windows:
+      - { start: 2025-10-18, end: 2025-10-18 }
+      - { start: 2026-11-06, end: 2026-11-06 }
+    demand_boost: 2.2
+    boosted_categories: [home, electronics]
+    budget_multiplier: 1.3
+    target_segments: [vip, loyal, lapsing, deal_hunter, new, hibernating]
+    theme: "buy something new for luck"
+    emoji: "🪔"
+
+  diwali:
+    name: Diwali
+    windows:
+      - { start: 2025-10-10, end: 2025-10-23 }
+      - { start: 2026-10-28, end: 2026-11-11 }
+    demand_boost: 1.9
+    boosted_categories: [home, fashion, beauty, grocery, electronics]
+    budget_multiplier: 1.5
+    target_segments: [vip, loyal, lapsing, deal_hunter, new, hibernating]
+    theme: "festival of lights — gifts, decor, sweets"
+    emoji: "🪔"
+
+  bhai_dooj:
+    name: Bhai Dooj
+    windows:
+      - { start: 2025-10-21, end: 2025-10-23 }
+      - { start: 2026-11-09, end: 2026-11-11 }
+    demand_boost: 1.2
+    boosted_categories: [beauty, fashion]
+    budget_multiplier: 1.0
+    target_segments: [loyal, new]
+    theme: "a gift for your sibling"
+    emoji: "🎁"
+
+  gurpurab:
+    name: Gurpurab
+    windows:
+      - { start: 2025-11-01, end: 2025-11-05 }
+      - { start: 2026-11-20, end: 2026-11-24 }
+    demand_boost: 1.1
+    boosted_categories: [fashion, home]
+    regions: [punjab]
+    budget_multiplier: 1.0
+    target_segments: [loyal, lapsing]
+    theme: "respectful, warm wishes — no sale hype"
+    emoji: "🙏"
+
+  wedding_season:
+    name: Wedding season
+    windows:
+      - { start: 2025-11-15, end: 2026-02-28 }
+      - { start: 2026-11-15, end: 2027-02-28 }
+    demand_boost: 1.15
+    boosted_categories: [fashion, footwear, beauty, home]
+    budget_multiplier: 1.1
+    target_segments: [vip, loyal, deal_hunter]
+    theme: "shaadi ready — outfits, gifts, glow"
+    emoji: "💍"
+
+  lohri:
+    name: Lohri
+    windows:
+      - { start: 2026-01-08, end: 2026-01-13 }
+      - { start: 2027-01-08, end: 2027-01-13 }
+    demand_boost: 1.2
+    boosted_categories: [grocery, fashion]
+    regions: [punjab]
+    budget_multiplier: 1.0
+    target_segments: [loyal, lapsing, new]
+    theme: "bonfire, rewari and warm winter wear"
+    emoji: "🔥"
+
+  holi:
+    name: Holi
+    windows:
+      - { start: 2026-02-27, end: 2026-03-04 }
+    demand_boost: 1.2
+    boosted_categories: [fashion, beauty]
+    budget_multiplier: 1.0
+    target_segments: [new, deal_hunter]
+    theme: "colours today, glow tomorrow"
+    emoji: "🎨"
+
+  baisakhi:
+    name: Baisakhi
+    windows:
+      - { start: 2025-04-09, end: 2025-04-14 }
+      - { start: 2026-04-09, end: 2026-04-14 }
+    demand_boost: 1.25
+    boosted_categories: [fashion, grocery, home]
+    regions: [punjab]
+    budget_multiplier: 1.1
+    target_segments: [loyal, lapsing, hibernating]
+    theme: "harvest celebration — new clothes, sweets"
+    emoji: "🌾"
+
+  raksha_bandhan:
+    name: Raksha Bandhan
+    windows:
+      - { start: 2025-08-03, end: 2025-08-09 }
+      - { start: 2026-08-22, end: 2026-08-28 }
+    demand_boost: 1.3
+    boosted_categories: [beauty, fashion, grocery]
+    budget_multiplier: 1.1
+    target_segments: [loyal, new, lapsing]
+    theme: "rakhi gifts for brothers and sisters"
+    emoji: "🎁"
+
+# Occasions that repeat for every customer, not on fixed dates.
+recurring:
+  salary_days:
+    days_of_month: [1, 5]       # payday window: 1st to 5th of each month
+    theme: "payday treat"
+  birthday:
+    days_before: 3              # birthday offer can go out up to 3 days early
+    theme: "happy birthday"

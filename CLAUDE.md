@@ -319,3 +319,11 @@ Admin: `/admin /stats /budget /broadcast /campaign <name> /simulate N /audit <cu
 
 ### Dashboard extras
 Holdout vs treated chart, what-if slider for discount cap, customer explorer timeline, festival calendar, audit log view.
+
+### Data implementation notes (Step 2)
+- Hidden ground truth lives in its own table `customer_truth` (persona, price_sensitivity, typical_gap_days, base_buy_prob, churned_on, still_browsing). Only the generator and simulator read it.
+- `customers` also has `region` (punjab / metro) and `birth_date` (for birthday offers).
+- `categories` table holds avg_price, margin_pct, return_rate.
+- Festival spikes come from `config/occasions.yaml` via `src/occasions.py` (shared with Node 2).
+- `--today YYYY-MM-DD` on the generator pins the date for reproducible demos.
+- Regenerating deletes `data/offers.db` (including Telegram links).
