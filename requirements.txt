@@ -1,0 +1,10 @@
+python-telegram-bot==21.6
+anthropic>=0.40
+pydantic>=2.7
+PyYAML>=6.0
+pandas>=2.2
+numpy>=1.26
+Faker>=26.0
+streamlit>=1.38
+python-dotenv>=1.0
+pytest>=8.0
