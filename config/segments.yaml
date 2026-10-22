@@ -28,3 +28,12 @@ rfm:
   recency_days: [14, 30, 60, 120]                 # bought within 14 days = 5 ... over 120 days = 1
   frequency_orders_365d: [24, 12, 6, 2]           # 24+ orders a year = 5 ... under 2 = 1
   monetary_spend_365d: [150000, 50000, 15000, 5000]  # Rs spent in the last year
+
+# What makes us consider an offer at all (Node 2). Checked in this order; the first that applies wins.
+# Lapsed buyers come first: winning back a regular is the main goal.
+triggers:
+  order: [lapsed_buyer, abandoned_cart, points_expiring, birthday, festival, new_customer,
+          long_inactive, browsing_no_buy, salary_day]
+  points_expiring_within_days: 14   # points expiring within 14 days = nudge
+  browsing_min_sessions: 3          # 3+ visits since their last order without buying = "browsing, not buying"
+  # birthday and salary-day windows are set in occasions.yaml (recurring section)

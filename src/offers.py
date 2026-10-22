@@ -35,6 +35,11 @@ class CatalogueOffer:
 class Catalogue:
     offers: dict[str, CatalogueOffer]
     fallbacks: dict[str, list[str]]
+    headlines: dict[str, str] = field(default_factory=dict)  # trigger -> card headline for AI offers
+
+    def headline_for(self, trigger: str | None, first_name: str) -> str:
+        template = self.headlines.get(trigger or "", self.headlines.get("default", "An offer for you, {first_name}"))
+        return template.format(first_name=first_name or "there")
 
 
 @dataclass
@@ -65,7 +70,28 @@ def load_catalogue(path: Path | str = OFFERS_PATH) -> Catalogue:
         missing = [i for i in ids if i not in offers]
         if missing:
             raise ValueError(f"offers.yaml: fallback for '{seg}' refers to unknown offer(s) {missing}")
-    return Catalogue(offers, fallbacks)
+    return Catalogue(offers, fallbacks, dict(raw.get("headlines") or {}))
+
+
+def category_label(category: str | None) -> str:
+    return CATEGORY_LABELS.get(category, category) if category else "everything"
+
+
+def describe_offer(p: OfferProposal, rules: Rules) -> str:
+    """One plain line for the Telegram card, built from the structured offer (never from AI text)."""
+    min_order = p.min_order_inr if p.min_order_inr is not None else rules.global_.min_order_value_inr
+    above = f"on orders above ₹{indian_number(min_order)}"
+    cat = category_label(p.category)
+    if p.offer_type == "percent_off":
+        cap = indian_number(rules.global_.max_flat_discount_inr)
+        return f"{plain_number(p.value)}% off {cat} {above} (up to ₹{cap})"
+    if p.offer_type == "flat_off":
+        return f"₹{indian_number(p.value)} off {cat} {above}"
+    if p.offer_type == "free_delivery":
+        return f"Free delivery {above}"
+    if p.offer_type == "bonus_points":
+        return f"{plain_number(p.value)} bonus points {above}"
+    return "Early access to our next big sale"
 
 
 def resolve_category(spec: str | None, ctx: ValidationContext) -> str | None:
@@ -84,7 +110,7 @@ def render(offer: CatalogueOffer, ctx: ValidationContext) -> tuple[str, OfferPro
     fields = dict(
         first_name=ctx.first_name or "there",
         value=plain_number(offer.value) if offer.offer_type != "flat_off" else indian_number(offer.value),
-        category=CATEGORY_LABELS.get(category, category) if category else "everything",
+        category=category_label(category),
         min_order=indian_number(offer.min_order_inr),
         expiry_days=offer.expiry_days,
     )

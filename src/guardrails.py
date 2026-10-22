@@ -535,3 +535,45 @@ def validate(raw: OfferProposal | dict | str, ctx: ValidationContext, rules: Rul
         check_style(p, ctx, rules),
     ]
     return ValidationResult(all(c.passed for c in checks), checks, p, cost)
+
+
+def allowed_options(ctx: ValidationContext, rules: Rules | None = None) -> list[dict]:
+    """The menu the AI may choose from (Node 4 -> Node 5), already filtered by the rules.
+
+    Business reason: the AI never sees an option it isn't allowed to pick, so most of its
+    proposals pass. The validator still re-checks everything afterwards.
+    """
+    rules = rules or load_rules()
+    seg = rules.segment_rules.get(ctx.segment)
+    if seg is None:
+        return []
+    g, e = rules.global_, rules.eligibility
+    lo, hi = g.offer_validity_days
+    base = {"expiry_days_min": lo, "expiry_days_max": hi, "min_order_inr_at_least": g.min_order_value_inr}
+    categories = list(dict.fromkeys(c for c in [*ctx.cart_categories, *ctx.favourite_categories] if c))[:3]
+    addicted = ctx.segment == "deal_hunter" and ctx.consecutive_discount_claims >= e.discount_addiction_claims
+    options = []
+    for t in seg.allowed_types:
+        if t in DISCOUNT_TYPES:
+            if addicted:
+                continue
+            for cat in categories or [None]:
+                risky = cat is None or cat in e.return_abuse_categories
+                if ctx.return_rate is not None and ctx.return_rate >= e.return_abuse_rate and risky:
+                    continue
+                cap = discount_limit_pct(rules, ctx.segment, cat)
+                if cap <= 0:
+                    continue
+                if t == "percent_off":
+                    options.append({**base, "offer_type": t, "category": cat, "max_value": cap,
+                                    "note": f"value = % off, at most {cap:g}"})
+                else:
+                    options.append({**base, "offer_type": t, "category": cat, "max_value": g.max_flat_discount_inr,
+                                    "max_pct_of_min_order": cap, "note": f"value = Rs off, at most Rs {g.max_flat_discount_inr:g} and at most "
+                                            f"{cap:g}% of min_order_inr"})
+        elif t == "bonus_points":
+            options.append({**base, "offer_type": t, "category": None, "max_value": g.max_bonus_points,
+                            "note": f"value = bonus points, at most {g.max_bonus_points}"})
+        else:
+            options.append({**base, "offer_type": t, "category": None, "max_value": 0, "note": "value = 0"})
+    return options

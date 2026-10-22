@@ -130,6 +130,19 @@ offers:
     headline: "A little something, {first_name}"
     message: "Hi {first_name}, get {value} bonus points on your next order above ₹{min_order}. Valid for {expiry_days} days."
 
+# Card headline when the AI writes the offer, picked by what triggered it. {first_name} is filled in.
+headlines:
+  abandoned_cart: "Still thinking it over, {first_name}?"
+  lapsed_buyer: "We miss you, {first_name}!"
+  long_inactive: "It's been too long, {first_name}"
+  points_expiring: "Your points are about to expire"
+  birthday: "Happy birthday, {first_name}!"
+  festival: "A festive treat for you, {first_name}"
+  new_customer: "Welcome, {first_name}!"
+  browsing_no_buy: "Picked for you, {first_name}"
+  salary_day: "Payday treat, {first_name}"
+  default: "An offer for you, {first_name}"
+
 # Tried top to bottom; the first offer that passes every rule is sent. If none pass, nothing is sent.
 fallbacks:
   vip: [VIP_EARLY, VIP_POINTS_300, FREE_DELIVERY]

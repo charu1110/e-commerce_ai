@@ -289,6 +289,8 @@ pip install -r requirements.txt
 python -m src.generate_data --customers 5000 --seed 42
 python scripts/validate_data.py
 python -m src.segments
+python -m src.engine.pipeline --customer C00001
+python -m src.engine.pipeline --sample 500
 pytest -q
 python -m src.bot
 streamlit run dashboard/app.py
@@ -342,3 +344,12 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - Cost model: percent offers are capped at `max_flat_discount_inr` ("up to Rs 500"); flat offers are converted to % of their min order for cap checks; store-wide offers use the strictest category cap and thinnest margin.
 - `config/offers.yaml` + `src/offers.py`: pre-approved catalogue, `category: favourite` resolves to cart/favourite category, `fallback_offer()` tries the segment's list in order and returns the first that passes `validate()`, else nothing.
 - Windows console can't print the rupee sign; set `PYTHONIOENCODING=utf-8` when printing messages in a terminal.
+
+### Pipeline notes (Step 5)
+- `src/engine/state.py`: `State` (one decision, filled node by node) and `Deps` (conn, rules, catalogue, calendar, agent, flags `dry_run`, `on_demand`, `channel`). `Deps.load(conn, agent=None)` defaults to the stub agent.
+- `src/engine/nodes.py`: the 10 nodes. Node 4 order: kill switch → opt-out → no trigger → cooldown → live offer → just bought → buy-anyway → budget → no allowed options → holdout (holdout = would-be-eligible customers only, stable hash split). Node 7 builds the HTML card + single-use code + send time (quiet hours → queue to `active_hour`; `on_demand` sends now); the bot delivers it after Node 8 logs it (buttons need `decision_id`). Nodes 8/9 write the one `decision_log` row.
+- `src/agent.py`: `stub_agent(summary, options) -> JSON text`, same interface as the real agent (Step 7). `allowed_options()` in guardrails builds the menu.
+- Trigger order + thresholds in `config/segments.yaml` (`triggers:`); lapsed_buyer is checked first. Card headlines per trigger in `config/offers.yaml` (`headlines:`).
+- `run_batch` processes customers in budget-priority order (churn risk × value × not-buying-anyway) so the daily budget goes to the most valuable win-backs.
+- DB: `settings` table (`paused` = kill switch via `db.is_paused/set_setting`); extra `decision_log` columns are added in place by `db.connect()`.
+- CLI: `python -m src.engine.pipeline --customer C00001 [--hour 23] [--write]` or `--sample 500` (dry run unless `--write`).

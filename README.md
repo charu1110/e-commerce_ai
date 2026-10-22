@@ -56,6 +56,22 @@ discount, and message checks (length, banned phrases, numbers match the offer, n
 data, no made-up claims, style). If a value in `rules.yaml` is mistyped or out of range, loading fails
 with a clear error instead of silently ignoring it.
 
+## The offer pipeline
+
+```
+python -m src.engine.pipeline --customer C00001          # one customer, every step explained
+python -m src.engine.pipeline --sample 500               # many customers, summary
+python -m src.engine.pipeline --sample 300 --hour 23     # see quiet-hours queuing
+```
+
+Every decision goes through 10 steps: load customer, detect trigger (lapsed buyer, abandoned cart,
+points expiring, birthday, festival, new customer, ...), segment and score, eligibility rules
+(opt-out, cooldown, just bought, would buy anyway, budget, holdout), AI offer (currently a rule-based
+stand-in), guardrail validator, fallback offer if needed, Telegram card with a single-use code, and
+tracking. Each decision is written to `decision_log`. Runs are dry runs unless you add `--write`.
+When the daily budget is limited, customers are served in priority order: most likely to churn,
+most valuable, and least likely to buy anyway come first.
+
 ## Tests
 
 ```

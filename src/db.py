@@ -124,6 +124,12 @@ CREATE TABLE IF NOT EXISTS offer_events (
     event       TEXT NOT NULL     -- sent / claimed / dismissed / why / expired
 );
 
+-- Runtime switches set by admins (e.g. paused = kill switch).
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_orders_customer   ON orders(customer_id, order_ts);
 CREATE INDEX IF NOT EXISTS idx_sessions_customer ON sessions(customer_id, ts);
 CREATE INDEX IF NOT EXISTS idx_cart_customer     ON cart_events(customer_id, added_ts);
@@ -132,13 +138,52 @@ CREATE INDEX IF NOT EXISTS idx_offer_events_dec  ON offer_events(decision_id);
 """
 
 
-def connect(path: Path | str = DB_PATH) -> sqlite3.Connection:
+# Columns added after the first release; added in place so existing databases keep their data.
+EXTRA_COLUMNS = {
+    "decision_log": {
+        "trigger_detail": "TEXT",
+        "segment_reason": "TEXT",
+        "ai_source": "TEXT",          # stub / claude
+        "offer_type": "TEXT",
+        "offer_value": "REAL",
+        "offer_category": "TEXT",
+        "headline": "TEXT",
+        "expires_on": "TEXT",
+        "send_at": "TEXT",
+        "channel": "TEXT",            # telegram / simulation / cli
+    },
+}
+
+
+def connect(path: Path | str = DB_PATH, check_same_thread: bool = True) -> sqlite3.Connection:
     """Open the database with dict-like rows and foreign keys on, creating tables if needed."""
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    for table, cols in EXTRA_COLUMNS.items():
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col, kind in cols.items():
+            if col not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+    conn.commit()
     return conn
+
+
+def get_setting(conn: sqlite3.Connection, key: str, default: str | None = None) -> str | None:
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute("INSERT INTO settings (key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    conn.commit()
+
+
+def is_paused(conn: sqlite3.Connection) -> bool:
+    """Kill switch: when on, no offers go out to anyone."""
+    return get_setting(conn, "paused", "0") == "1"
 
 
 def reset(path: Path | str = DB_PATH) -> sqlite3.Connection:
