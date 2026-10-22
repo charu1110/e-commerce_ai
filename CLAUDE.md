@@ -288,6 +288,7 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -r requirements.txt
 python -m src.generate_data --customers 5000 --seed 42
 python scripts/validate_data.py
+python -m src.segments
 pytest -q
 python -m src.bot
 streamlit run dashboard/app.py
@@ -327,3 +328,10 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - Festival spikes come from `config/occasions.yaml` via `src/occasions.py` (shared with Node 2).
 - `--today YYYY-MM-DD` on the generator pins the date for reproducible demos.
 - Regenerating deletes `data/offers.db` (including Telegram links).
+
+### Features & segments notes (Step 3)
+- `src/features.py` computes everything from observable data only (test proves wiping `customer_truth` changes nothing). Key outputs: `gap_ratio`, `churn_risk`, `buy_anyway` (P(buy in 7 days with no offer)), `price_sensitivity`, RFM scores, open cart items, points expiry, days to birthday.
+- Segment thresholds live in `config/segments.yaml` (marketing-editable). Order: new → hibernating → lapsing → vip → deal_hunter → loyal → occasional.
+- **7th segment `occasional`** (rare buyers, window shoppers, cart abandoners) — needs its own entry in `rules.yaml` `segment_rules`.
+- Every segment comes with a plain-English reason (reused by `/why`, audit log, dashboard).
+- `python -m src.segments` prints segment sizes, scores, and a persona-vs-segment match table (80–100% match).

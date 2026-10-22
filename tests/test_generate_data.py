@@ -7,17 +7,7 @@ import pytest
 from src import db
 from src.generate_data import generate
 from src.occasions import load_calendar
-
-TODAY = date(2026, 10, 22)
-
-
-@pytest.fixture(scope="module")
-def conn(tmp_path_factory):
-    path = tmp_path_factory.mktemp("data") / "test.db"
-    generate(n_customers=400, seed=7, today=TODAY, db_path=path)
-    c = db.connect(path)
-    yield c
-    c.close()
+from tests.conftest import TODAY
 
 
 def read(conn, sql):
@@ -26,9 +16,9 @@ def read(conn, sql):
 
 def test_row_counts_and_unique_ids(conn):
     customers = read(conn, "SELECT customer_id FROM customers")
-    assert len(customers) == 400
+    assert len(customers) == 600
     assert customers["customer_id"].is_unique
-    assert len(read(conn, "SELECT * FROM customer_truth")) == 400
+    assert len(read(conn, "SELECT * FROM customer_truth")) == 600
     assert read(conn, "SELECT order_id FROM orders")["order_id"].is_unique
 
 

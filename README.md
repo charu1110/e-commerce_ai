@@ -27,6 +27,18 @@ return rates, COD by city tier, lapsing behaviour).
 
 Festival dates and demand boosts are in `config/occasions.yaml`; edit them without touching code.
 
+## Features and segments
+
+```
+python -m src.segments
+```
+
+Scores every customer from behaviour only (days since last order vs their usual gap, churn risk,
+"would buy anyway" chance, price sensitivity, RFM) and assigns one of 7 segments: new, hibernating,
+lapsing, vip, deal_hunter, loyal, occasional. Each segment comes with a plain-English reason.
+Thresholds are in `config/segments.yaml`. The command also prints how well segments match the
+hidden personas (80-100%).
+
 ## Tests
 
 ```

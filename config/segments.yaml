@@ -1,0 +1,30 @@
+# config/segments.yaml — how customers are grouped and scored. Edit the numbers, no coding needed.
+#
+# Segments are checked from top to bottom; the FIRST one that matches wins:
+#   new -> hibernating -> lapsing -> vip -> deal_hunter -> loyal -> occasional
+# The engine only uses what customers actually did (orders, browsing, carts, coupons).
+
+segments:
+  new_customer_days: 30          # signed up less than 30 days ago = "new"
+  hibernating_days: 180          # no order for 180+ days = "hibernating"
+  lapsed_gap_ratio: 2.0          # "lapsing" = gone more than 2x their usual time between orders
+  min_orders_for_habit: 3        # need 3+ orders before we can say someone has a habit that stopped
+  vip_min_spend_365d: 100000     # VIP = spent at least Rs 1,00,000 in the last year ...
+  vip_min_orders_365d: 24        # ... across at least 24 orders (about 2 a month)
+  deal_hunter_min_coupon_share: 0.5   # 50%+ of orders used a coupon = "deal hunter"
+  deal_hunter_min_orders: 3
+  loyal_min_orders_365d: 15      # 15+ orders in the last year (every 3-4 weeks) and still on rhythm = "loyal"
+  # everyone else = "occasional" (rare buyers, window shoppers, cart abandoners)
+
+scoring:
+  default_gap_days: 30           # usual gap assumed for customers with only one order
+  churn_midpoint_ratio: 1.5      # churn risk is 50% when someone is 1.5x past their usual gap
+  churn_steepness: 2.5           # how fast churn risk rises after that
+  still_browsing_factor: 0.85    # browsed in the last 14 days = still interested, lower churn risk
+  open_cart_days: 7              # carts abandoned in the last 7 days count as "open"
+
+# RFM scores (1 = low, 5 = high). Each list is the threshold for score 5, 4, 3, 2.
+rfm:
+  recency_days: [14, 30, 60, 120]                 # bought within 14 days = 5 ... over 120 days = 1
+  frequency_orders_365d: [24, 12, 6, 2]           # 24+ orders a year = 5 ... under 2 = 1
+  monetary_spend_365d: [150000, 50000, 15000, 5000]  # Rs spent in the last year
