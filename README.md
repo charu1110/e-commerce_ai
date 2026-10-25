@@ -1,183 +1,182 @@
 # Personalised Offer Engine
 
-Decides which offer (if any) each customer of a synthetic e-commerce store should get, and when,
-and delivers it through one Telegram bot. Rules set the limits, the AI personalises within them,
-and deterministic code checks every offer before it is sent. See `CLAUDE.md` for the full design.
+**Only spend a discount when it changes behaviour.**
 
-## Setup (Windows)
+For each customer of an (entirely synthetic) Indian online store, this engine decides **whether to
+send an offer, which one, and when**, and delivers it through one Telegram bot. Rules set the limits,
+Claude chooses and personalises the offer within them, and plain Python code checks every offer
+before it is sent. The AI is never the judge of its own output.
+
+*Punjab Jobs AI Bootcamp · J-PAL South Asia · Hackathon 2*
+
+![Results dashboard](docs/screenshots/01-results.jpg)
+
+## Highlights
+
+| | |
+|---|---|
+| **It pays** | 14-day simulation with a 10% holdout: **+22.6 points uplift** (46.3% vs 23.7% bought), 365 extra orders, ROI **+₹2,11,105** |
+| **It never breaks a rule** | 15 deterministic checks on every offer; a "chaos AI" and ~30 red-team attacks (90% off, lying numbers, hidden characters, prompt injection in a customer's name) never get through |
+| **Marketing stays in control** | All limits in plain-English YAML, plus a rule editor that previews *"affects 50 customers, cost ₹21,932 → ₹21,985"* before saving |
+| **Personal, in their language** | Win-backs in English, Hinglish or Punjabi ("Sat Sri Akal Manjot ji!"), festival-aware (Diwali, Karwa Chauth, Lohri, Baisakhi, Gurpurab) |
+| **Realistic data** | 5,000 customers, 8 hidden personas, 18 months, 24/24 realism checks (Pareto spend, Gamma purchase gaps, Diwali spike, COD in smaller cities) |
+| **Explains itself** | Every decision is logged; `/why` in Telegram and the dashboard's audit log say why an offer was (or wasn't) sent |
+
+An offer card in Telegram (written by Claude, checked by the rules):
+
+> **We miss you, Manjot!**
+>
+> Sat Sri Akal Manjot ji! It's been 38 days and we've really missed you. Come back to fashion with
+> 15% off on orders of ₹999 or more. Valid for 6 days 😊
+>
+> 🎁 **15% off fashion on orders above ₹999 (up to ₹500)**
+> ⏳ Valid till Thu 29 Oct · 🔖 Code: `PCT15-00503-NDCM`
+>
+> [Claim 🎁] [Not now] [Why this offer?]
+
+## Quick start (Windows)
 
 ```
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env    # then fill in your own keys
+copy .env.example .env                                   # add your Telegram token and Anthropic key
+python -m src.generate_data --customers 5000 --seed 42   # synthetic store (about 45 s)
+python -m src.bot                                        # Telegram bot
+streamlit run dashboard/app.py                           # marketing dashboard
+python -m src.simulator --days 14                        # does it pay? (about 4 min)
+pytest -q                                                # 275 tests
 ```
 
-## Synthetic data
+Without an Anthropic key everything still works: a rule-based agent writes the offers.
+
+## How it works
+
+Every decision passes through 10 steps (one Python function each, in `src/engine/nodes.py`) and
+writes one row to the audit log:
+
+```
+1 Load customer → 2 Detect trigger → 3 Segment & score → 4 Eligibility (rules) ──not eligible / holdout──→ 9 Skip
+                                                              │
+                                5 Claude picks an offer → 6 Guardrail validator ──fails / timeout──→ 10 Safe fallback
+                                                              │                                          │
+                                                     7 Send on Telegram ◄──────────────────────────────┘
+                                                              │
+                                                     8 Track & learn (follow-ups if ignored)
+```
+
+- **Triggers:** lapsed buyer, abandoned cart, points expiring, birthday, festival, new customer, long
+  inactive, browsing without buying, payday, follow-up.
+- **Who gets nothing:** opted out, holdout (control group), cooldown, just bought, "would buy anyway",
+  budget used up, kill switch. When the budget is limited, the most valuable likely churners go first.
+- **Claude** sees only the options the rules allow; its answer must be one of them, in strict JSON.
+- **The validator** (plain Python, no AI) checks offer type, discount caps, flat cap, minimum order,
+  budget, eligibility, expiry, profit after discount, and the message (length, banned phrases, numbers
+  match the offer, no other customer's data, no invented claims, codes or links).
+- **Follow-ups:** an ignored offer is followed by free delivery, then 10%, then 15%, then stop.
+  "Not now" is respected.
+
+## Telegram bot
+
+Run `python -m src.bot`, open the bot, send `/start` and pick a shopper type.
+
+| Command | What it does |
+|---|---|
+| `/myoffer` | Runs the full engine for you now and shows the offer card (or why there is none) |
+| `/why` | Why you got (or didn't get) your last offer, in plain words |
+| `/history` | Your last 5 offers and what you did with them |
+| `/timetravel N` | Demo: jump N days ahead to see offers expire and follow-ups kick in |
+| `/persona` | Become a different customer |
+| `/stop` / `/resume` | Opt out of / back into offers |
+| `/whoami` | Your chat id (for `ADMIN_CHAT_IDS`) |
+
+**Admins** (chat ids in `ADMIN_CHAT_IDS`): `/admin` (today's stats with Pause / Resume buttons),
+`/audit C00123` (one customer's decision trail), `/pause` / `/unpause` (kill switch).
+
+The bot runs a scheduler every 10 minutes: it expires offers, delivers offers held back by quiet hours
+(10pm-8am) at the customer's usual shopping hour, and pushes follow-ups.
+
+## Dashboard
+
+`streamlit run dashboard/app.py`, then pick the data source (simulation or live bot) in the sidebar.
+
+| Page | Shows |
+|---|---|
+| **Results** | Uplift vs holdout, money spent vs gained, uplift by segment, funnel, why customers got no offer, which rules blocked the AI |
+| **Audit log** | Every decision with its reason; open one to see all 15 rule checks |
+| **Customer explorer** | A customer's segment and reason, churn risk, monthly spend, decisions |
+| **Rules & calendar** | Current limits, segment rules, follow-up ladder, upcoming festivals |
+| **Rule editor** | Change limits, preview the impact on today's customers, then save |
+
+| Funnel and blocked rules | Audit log |
+|---|---|
+| ![Funnel](docs/screenshots/02-funnel-and-rules.jpg) | ![Audit log](docs/screenshots/03-audit-log.jpg) |
+| **Customer explorer** | **Rule editor with preview** |
+| ![Customer explorer](docs/screenshots/04-customer-explorer.jpg) | ![Rule editor](docs/screenshots/05-rule-editor-preview.jpg) |
+
+## Changing the rules (no coding needed)
+
+| File | What it controls |
+|---|---|
+| `config/rules.yaml` | Every limit: max discount, category and segment caps, daily budget, cooldown, holdout %, quiet hours, expiry, follow-up ladder, banned phrases and claims |
+| `config/offers.yaml` | Pre-approved fallback offers, their messages, and card headlines |
+| `config/segments.yaml` | How customers are grouped and which triggers count |
+| `config/occasions.yaml` | Festival calendar: dates, demand boost, budget multiplier, theme |
+| `src/prompts/offer_agent.md` | The instructions Claude follows (tone, language, what never to write) |
+
+Each value has a plain-English comment. Edit the files directly or use the dashboard's **Rule editor**,
+which validates the change, previews its impact, keeps all comments, and backs up the old file in
+`config/history/`. A typo or out-of-range value is rejected with a clear message. The bot picks up
+saved rules on its next decision.
+
+## Does it pay? (simulation)
+
+`python -m src.simulator --days 14` runs the real engine day by day on a copy of the database and
+lets customers react according to hidden personas the engine never sees. 10% are held back.
+
+- **uplift** = share who bought with offers − share who bought in the holdout
+- **ROI** = extra margin from the extra orders − discount money spent
+
+Example (2,000 customers, 14 days): **+22.6 points uplift**, 365 extra orders, ₹87,195 spent
+(₹23,469 of it on people who would have bought anyway), ₹2,98,300 extra margin, **ROI +₹2,11,105**.
+Lapsed regulars (+32 pts) and occasional buyers (+39 pts) respond most; VIPs show no uplift because
+they buy anyway, which is why the rules give them points and early access instead of discounts.
+
+## The synthetic data
+
+`python -m src.generate_data --customers 5000 --seed 42` creates 18 months of history for 5,000
+customers in Punjab cities and metros, driven by 8 hidden personas (VIP, loyal, lapsing, deal hunter,
+cart abandoner, window shopper, new, hibernating): ~100k orders, ~430k sessions, ~300k cart events.
+`python scripts/validate_data.py` prints the realism checks (24/24 pass). The engine only uses
+behaviour; `python -m src.segments` shows its segments match the hidden personas 80-100%.
+
+## Safety and testing
+
+- `pytest -q` runs 275 tests in about 5 minutes.
+- `tests/test_redteam.py` attacks the system on purpose: 90% off, offers off the AI's menu, text that
+  lies about numbers ("fifty percent", "half price", "₹5k", fullwidth or Devanagari digits, invented
+  dates), hidden zero-width characters, made-up coupon codes, cashback or free-iPhone claims, other
+  customers' names, links, broken JSON, and a customer whose *name* is a prompt-injection attack.
+  All are blocked; safe English, Hinglish and Punjabi messages still pass.
+- A "chaos agent" test proposes random offers for every customer: no rule-breaking offer is ever sent.
+- Secrets live only in `.env` (git-ignored) and are never logged.
+
+## All commands
 
 ```
 python -m src.generate_data --customers 5000 --seed 42
 python scripts/validate_data.py
-```
-
-Generates 18 months of history for 5,000 customers across 8 hidden personas (~100k orders,
-~430k sessions, ~300k cart events) into `data/offers.db`. `validate_data.py` prints the realism
-checks (Pareto spend, Gamma purchase gaps, Diwali spike, weekend and payday bumps, cart abandonment,
-return rates, COD by city tier, lapsing behaviour).
-
-Festival dates and demand boosts are in `config/occasions.yaml`; edit them without touching code.
-
-## Features and segments
-
-```
 python -m src.segments
-```
-
-Scores every customer from behaviour only (days since last order vs their usual gap, churn risk,
-"would buy anyway" chance, price sensitivity, RFM) and assigns one of 7 segments: new, hibernating,
-lapsing, vip, deal_hunter, loyal, occasional. Each segment comes with a plain-English reason.
-Thresholds are in `config/segments.yaml`. The command also prints how well segments match the
-hidden personas (80-100%).
-
-## Rules and offers (marketing can edit these)
-
-| File | What it controls |
-|---|---|
-| `config/rules.yaml` | Every limit: max discount, per-category and per-segment caps, daily budget, cooldown, holdout %, quiet hours, expiry range, banned phrases |
-| `config/offers.yaml` | Pre-approved fallback offers and their message templates, per segment |
-| `config/segments.yaml` | How customers are grouped (lapsed, VIP, loyal, ...) |
-| `config/occasions.yaml` | Festival calendar |
-
-Every offer, whether written by the AI or taken from `offers.yaml`, is checked by `src/guardrails.py`
-(plain Python, no AI) against 15 rules before it is sent: offer type allowed for the segment, discount
-caps, flat cap and minimum order, daily budget, customer eligibility (opt-out, holdout, cooldown, just
-bought, kill switch, discount-addiction and return-abuse guards), expiry and stacking, profit after
-discount, and message checks (length, banned phrases, numbers match the offer, no other customer's
-data, no made-up claims, style). If a value in `rules.yaml` is mistyped or out of range, loading fails
-with a clear error instead of silently ignoring it.
-
-## The offer pipeline
-
-```
-python -m src.engine.pipeline --customer C00001          # one customer, every step explained
-python -m src.engine.pipeline --sample 500               # many customers, summary
-python -m src.engine.pipeline --sample 300 --hour 23     # see quiet-hours queuing
-```
-
-Every decision goes through 10 steps: load customer, detect trigger (lapsed buyer, abandoned cart,
-points expiring, birthday, festival, new customer, ...), segment and score, eligibility rules
-(opt-out, cooldown, just bought, would buy anyway, budget, holdout), AI offer (currently a rule-based
-stand-in), guardrail validator, fallback offer if needed, Telegram card with a single-use code, and
-tracking. Each decision is written to `decision_log`. Runs are dry runs unless you add `--write`.
-When the daily budget is limited, customers are served in priority order: most likely to churn,
-most valuable, and least likely to buy anyway come first.
-
-## The AI offer agent
-
-Claude picks one offer from the options the rules allow and writes the message. Put your key in
-`.env` as `ANTHROPIC_API_KEY` (model in `ANTHROPIC_MODEL`). The prompt is plain text in
-`src/prompts/offer_agent.md`, so tone and guidance can be changed without code.
-
-Claude's answer is never trusted on its own: every proposal goes through the guardrail validator,
-and if Claude errors, times out (10 s, 1 retry), declines, or breaks a rule, a pre-approved offer
-from `config/offers.yaml` is sent instead. Without a key, a rule-based agent writes the offers.
-
-```
+python -m src.engine.pipeline --customer C00001             # one decision, every step explained
+python -m src.engine.pipeline --sample 500                  # many customers (dry run unless --write)
 python -m src.engine.pipeline --customer C00001 --agent claude
-```
-
-## Telegram bot
-
-1. Create a bot with @BotFather and put its token in `.env` as `TELEGRAM_BOT_TOKEN`.
-2. Run it:
-
-```
-python -m src.bot
-```
-
-3. In Telegram, open the bot and send `/start`. Pick a shopper type (lapsing regular, VIP, deal
-   hunter, ...) and you are linked to a synthetic customer of that type. Then:
-
-| Command | What it does |
-|---|---|
-| `/myoffer` | Runs the full pipeline for you now and shows the offer card (or why there is none) |
-| `/persona` | Become a different customer |
-| `/why` | Why you got (or didn't get) your last offer, in plain words |
-| `/history` | Your last 5 offers and what you did with them |
-| `/timetravel N` | Demo: jump N days ahead to see offers expire and the follow-up ladder kick in |
-| `/stop` / `/resume` | Opt out of / back into offers |
-| `/whoami` | Shows your chat id (put it in `ADMIN_CHAT_IDS` for admin commands) |
-| `/help` | All commands |
-
-**Admin commands** (only for chat ids listed in `ADMIN_CHAT_IDS` in `.env`; get yours with `/whoami`):
-
-| Command | What it does |
-|---|---|
-| `/admin` | Today's stats: offers sent, claim rate, budget used, how often the AI passed the rules, with Pause / Resume buttons |
-| `/audit C00123` | One customer's full decision trail: triggers, offers, codes, costs, blocked AI proposals |
-| `/pause` / `/unpause` | Kill switch: stop or restart all offers |
-
-Offer cards have **Claim 🎁**, **Not now** and **Why this offer?** buttons; every tap is logged.
-If you see SSL certificate errors, make sure `truststore` from `requirements.txt` is installed.
-
-## Follow-ups (escalation ladder)
-
-If a customer ignores an offer (it expires without a tap), the next one follows the ladder in
-`config/rules.yaml`: free delivery after 3 days, then 10% off, then 15% off, then stop. Tapping
-"Not now" is respected (no follow-up). Every follow-up still passes all the rules. The bot runs the
-scheduler every 10 minutes: it marks expired offers, sends offers that were held back by quiet hours,
-and pushes follow-ups. Run one round by hand with `python -m src.scheduler` (add `--write` to act).
-
-Demo in Telegram: `/myoffer`, don't tap anything, `/timetravel 6`, `/myoffer` again.
-
-## Campaign simulator (does it pay?)
-
-```
+python -m src.scheduler                                     # one scheduler round (dry run unless --write)
 python -m src.simulator --days 14
-```
-
-Runs the real engine day by day for 14 days on a copy of the database, and lets each customer react
-according to their hidden persona (which the engine never sees). 10% of customers are held back as a
-control group, so we can measure what the offers really change:
-
-- **uplift** = share of customers with offers who bought - share of the holdout who bought
-- **ROI** = extra margin from the extra orders - discount money spent
-
-Example run (2,000 customers, 14 days): 46.3% of customers with offers bought vs 23.7% of the holdout
-(+22.6 points, 365 extra orders). Rs 87,195 spent on discounts (Rs 23,469 of it on people who would
-have bought anyway), Rs 2,98,300 extra margin, ROI +Rs 2,11,105. VIPs showed no uplift: they buy
-anyway, which is why the rules give them points and early access, not discounts.
-
-## Dashboard
-
-```
+python -m src.bot
 streamlit run dashboard/app.py
-```
-
-Pick the data source (simulation or live bot) in the sidebar.
-
-- **Results**: uplift vs holdout, money spent vs gained, uplift by segment, funnel (decisions -> eligible
-  -> sent -> claimed), why customers got no offer, which rules blocked the AI, fallback rate, offers by type.
-- **Audit log**: every decision with its reason; open one to see all 15 rule checks.
-- **Customer explorer**: a customer's segment, scores, monthly spend and decisions.
-- **Rules & calendar**: the current limits, segment rules, follow-up ladder and upcoming festivals.
-- **Rule editor**: change limits (max discount, budget, cooldown, holdout %, category caps, what each
-  segment may get, banned phrases) in a form. **Preview** runs today's decisions with the old and new
-  rules and tells you, before saving, e.g. *"This change affects about 50 customers today. Offers:
-  155 -> 175. Estimated discount cost: Rs 21,932 -> Rs 21,985."* Save only becomes possible after a
-  preview. Saving keeps every comment in `config/rules.yaml`, backs up the old file in
-  `config/history/`, and the bot uses the new rules on its next decision (no restart).
-
-## Red-team tests
-
-`tests/test_redteam.py` attacks the system on purpose and checks every attack is blocked: 90% off,
-offers that weren't on the AI's menu, text that lies about the numbers ("fifty percent", "half price",
-"₹5k", fullwidth or Devanagari digits, invented dates), hidden zero-width characters, made-up coupon
-codes, cashback or free-iPhone claims, other customers' names, links, broken JSON, and customers whose
-*name* is a prompt-injection attack. Safe messages in English, Hinglish and Punjabi must still pass.
-
-## Tests
-
-```
 pytest -q
 ```
+
+If Python shows SSL certificate errors (antivirus or proxy), make sure `truststore` from
+`requirements.txt` is installed. The design notes are in `CLAUDE.md`; a presentation walkthrough is in
+`docs/DEMO.md`.

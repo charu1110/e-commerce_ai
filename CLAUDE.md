@@ -397,3 +397,9 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - `preview_change(conn, old, new, sample=1000)`: dry-runs today's decisions (budget-priority order, budget scaled to the sample) with both rule sets; reports customers whose outcome changes (offer vs none, type/value/category), offers and est. cost before/after, per segment, examples, new skip reasons — scaled to the full population. ~7 s on 1,000 customers. Note: when the budget binds, a bigger holdout gives *more* offers to the rest.
 - Dashboard page "Rule editor": form prefilled from rules.yaml (help text = the yaml comment), lists changes, shows validation errors, Save only after a preview of exactly these edits.
 - `Deps.refresh_config()` reloads rules/offers/segments/occasions when any `config/*.yaml` is newer (bot calls it before each `/myoffer` and scheduler tick); an invalid file is ignored and the old rules stay.
+
+### Demo polish notes (26 Oct)
+- End-to-end check on a scratch DB (generate → validate → segments → pipeline → scheduler → simulator) found one bug: the simulator deleted `decision_log` before `offer_events` (FK error on a DB with bot activity). Fixed + regression test.
+- `reporting.skip_reasons` merges variants ("..., so nothing was sent", per-segment escalation wording).
+- README rewritten (highlights, screenshots in `docs/screenshots/`, quick start); presentation walkthrough in `docs/DEMO.md`. Git history checked: no `.env`, databases or secret-looking strings ever committed.
+- Streamlit doesn't reload imported `src/` modules on page refresh: restart the server after changing them.

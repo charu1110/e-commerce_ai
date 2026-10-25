@@ -104,8 +104,8 @@ def run_simulation(days: int = 14, seed: int = 7, source: Path | str = db.DB_PAT
     target = Path(target)
     shutil.copy(source, target)
     conn = db.connect(target)
+    conn.execute("DELETE FROM offer_events")   # events first: they point at decisions
     conn.execute("DELETE FROM decision_log")
-    conn.execute("DELETE FROM offer_events")
     conn.execute("UPDATE customers SET telegram_chat_id = NULL")
     db.set_setting(conn, "paused", "0")
     conn.commit()

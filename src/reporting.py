@@ -50,7 +50,11 @@ def blocked_by_rule(log: pd.DataFrame) -> pd.DataFrame:
 
 def skip_reasons(log: pd.DataFrame, top: int = 8) -> pd.DataFrame:
     s = log.loc[log["status"].isin(["skipped", "no_offer"]), "skip_reason"].dropna()
-    s = s.str.replace(r"\d+(\.\d+)?", "N", regex=True).str.replace(r"\(.*\)", "", regex=True).str.strip()
+    s = (s.str.replace(r"\(.*?\)", "", regex=True)          # drop details in brackets
+          .str.replace(r"\s*,\s*so .*$", "", regex=True)    # "..., so nothing was sent" = same reason
+          .str.replace(r"for this \w+ customer", "for this segment", regex=True)
+          .str.replace(r"\d+(\.\d+)?", "N", regex=True)
+          .str.replace(r"\s+", " ", regex=True).str.strip(" ."))
     return s.value_counts().head(top).rename_axis("reason").reset_index(name="customers")
 
 

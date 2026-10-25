@@ -93,3 +93,21 @@ def test_dashboard_page_runs_without_errors():
     for page in ["Audit log", "Customer explorer", "Rules & calendar"]:
         at.sidebar.radio[1].set_value(page).run()
         assert not at.exception, (page, at.exception)
+
+
+def test_simulation_works_on_a_database_that_already_has_offers(gen_db_path, tmp_path):
+    """The live bot DB has decisions and click events; the simulator must still start cleanly from it."""
+    import shutil
+    from datetime import datetime, time
+    from src.engine.pipeline import run_batch
+    from src.engine.state import Deps
+    src = tmp_path / "live.db"
+    shutil.copy(gen_db_path, src)
+    c = db.connect(src)
+    ids = [r["customer_id"] for r in c.execute("SELECT customer_id FROM customers LIMIT 80")]
+    run_batch(ids, Deps.load(c), datetime.combine(TODAY, time(14, 0)))
+    assert c.execute("SELECT COUNT(*) FROM offer_events").fetchone()[0] > 0
+    c.close()
+    r = run_simulation(days=2, seed=1, source=src, target=tmp_path / "sim.db", start=TODAY, sample=100,
+                       progress=lambda *_: None)
+    assert r.funnel["decisions"] == 200
