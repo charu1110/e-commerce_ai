@@ -296,7 +296,7 @@ pytest -q
 python -m src.bot
 python -m src.scheduler            # one scheduler round (dry run unless --write)
 streamlit run dashboard/app.py
-python -m src.simulator --days 14
+python -m src.simulator --days 14              # ~4 min on 2000 customers; --sample 0 = all
 ```
 
 ## 13. Final scope additions (agreed 22 Oct)
@@ -385,3 +385,9 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - Node 4: follow-up waits `wait_days`, is exempt from the cooldown when `global.escalation_overrides_cooldown` (validator honours `ctx.cooldown_exempt`), restricts the AI menu to the step's type and value, and stops if the segment doesn't allow that type. Trigger becomes `follow_up` if nothing else fired; headline `follow_up` in offers.yaml. `decision_log.ladder_step` and `card_text` are stored.
 - `src/scheduler.py`: `expire_offers`, `due_queued` + `mark_delivered` (quiet-hours queue), `follow_up_candidates`, `tick()` (previews follow-ups in dry run first so waiting customers don't add log rows). CLI `python -m src.scheduler [--write]`.
 - Bot: ticker every 10 min (`TICK_SECONDS`) pushes due queued offers and follow-ups to linked chats; `/timetravel N` shifts that chat's clock (in memory) so expiry + ladder can be demoed; `my_offer` expires the customer's offers at the shifted time first.
+
+### Simulator & dashboard notes (Steps 11-12)
+- `src/simulator.py`: copies `data/offers.db` to `data/simulation.db` (clears decisions/links), then per day: expire offers, record planned purchases as real orders, recompute features, `run_batch` (budget priority), customers react via hidden truth — daily organic buy rate from `base_buy_prob`, offer lift = `offer_lift()` (generosity × persona response × price sensitivity; lapsers who stopped browsing respond less). Treated vs holdout = first eligible outcome; uplift = conversion difference after that day; extra margin = incremental orders × avg redeemed margin; ROI = extra margin − discount spent (only redemptions inside the horizon count). Writes `data/simulation_results.json` (gitignored). Default `--sample 2000`.
+- Run on 25 Oct (14 days, 2000 customers): treated 46.3% vs holdout 23.7% → +22.6 pts, 365 extra orders, discount Rs 87k (Rs 23k on sure buyers), extra margin Rs 2.98 lakh, ROI +Rs 2.11 lakh; VIP uplift ~0 (they buy anyway).
+- `src/reporting.py`: funnel, summary, blocked-by-rule, skip reasons, offers_by — pure functions over decision_log.
+- `dashboard/app.py` (Streamlit 1.65 + Altair): data source = simulation or live; pages Results / Audit log / Customer explorer / Rules & calendar. Palette from the dataviz skill (blue #2a78d6 / orange #eb6834 validated; diverging blue↔red for uplift); labels use theme-aware text ink via `st.context.theme`. Read-only DB connection. `.claude/launch.json` starts it on port 8501. Altair gotcha: a separate colour field on a sorted nominal y collapsed rows in Streamlit — colour with `alt.condition` instead.

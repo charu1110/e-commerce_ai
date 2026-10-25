@@ -130,6 +130,38 @@ and pushes follow-ups. Run one round by hand with `python -m src.scheduler` (add
 
 Demo in Telegram: `/myoffer`, don't tap anything, `/timetravel 6`, `/myoffer` again.
 
+## Campaign simulator (does it pay?)
+
+```
+python -m src.simulator --days 14
+```
+
+Runs the real engine day by day for 14 days on a copy of the database, and lets each customer react
+according to their hidden persona (which the engine never sees). 10% of customers are held back as a
+control group, so we can measure what the offers really change:
+
+- **uplift** = share of customers with offers who bought - share of the holdout who bought
+- **ROI** = extra margin from the extra orders - discount money spent
+
+Example run (2,000 customers, 14 days): 46.3% of customers with offers bought vs 23.7% of the holdout
+(+22.6 points, 365 extra orders). Rs 87,195 spent on discounts (Rs 23,469 of it on people who would
+have bought anyway), Rs 2,98,300 extra margin, ROI +Rs 2,11,105. VIPs showed no uplift: they buy
+anyway, which is why the rules give them points and early access, not discounts.
+
+## Dashboard
+
+```
+streamlit run dashboard/app.py
+```
+
+Pick the data source (simulation or live bot) in the sidebar.
+
+- **Results**: uplift vs holdout, money spent vs gained, uplift by segment, funnel (decisions -> eligible
+  -> sent -> claimed), why customers got no offer, which rules blocked the AI, fallback rate, offers by type.
+- **Audit log**: every decision with its reason; open one to see all 15 rule checks.
+- **Customer explorer**: a customer's segment, scores, monthly spend and decisions.
+- **Rules & calendar**: the current limits, segment rules, follow-up ladder and upcoming festivals.
+
 ## Red-team tests
 
 `tests/test_redteam.py` attacks the system on purpose and checks every attack is blocked: 90% off,
