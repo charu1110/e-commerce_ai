@@ -30,6 +30,7 @@ COMMANDS = [
     ("persona", "Switch to a different customer"),
     ("why", "Why did I get (or not get) my last offer?"),
     ("history", "Your last 5 offers"),
+    ("timetravel", "Demo: jump N days ahead, e.g. /timetravel 4"),
     ("stop", "Stop receiving offers"),
     ("resume", "Start receiving offers again"),
     ("whoami", "Show your Telegram chat id"),
@@ -124,6 +125,32 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await reply(update, await call(service(context).history, update.effective_chat.id))
 
 
+async def timetravel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args or not context.args[0].isdigit():
+        await reply(update, "Usage: /timetravel 4 (jump 4 days ahead), /timetravel 0 to come back.")
+        return
+    await reply(update, await call(service(context).time_travel, update.effective_chat.id, int(context.args[0])))
+
+
+TICK_SECONDS = 600
+
+
+async def ticker(app: Application) -> None:
+    """Every 10 minutes: expire offers, deliver offers held back by quiet hours, push follow-ups."""
+    svc: BotService = app.bot_data["service"]
+    while True:
+        await asyncio.sleep(TICK_SECONDS)
+        try:
+            pushes = await call(svc.tick)
+            for chat_id, card, decision_id in pushes:
+                await app.bot.send_message(chat_id, card, parse_mode=ParseMode.HTML,
+                                           reply_markup=offer_buttons(decision_id))
+            if pushes:
+                log.info("Scheduler pushed %d offer(s).", len(pushes))
+        except Exception:  # keep the ticker alive whatever happens
+            log.exception("Scheduler tick failed")
+
+
 # ---------------------------------------------------------------- admin (ADMIN_CHAT_IDS only)
 def admin_buttons(paused: bool) -> InlineKeyboardMarkup:
     toggle = ("▶️ Resume all offers", "admin:resume") if paused else ("⏸ Pause all offers", "admin:pause")
@@ -216,7 +243,8 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def post_init(app: Application) -> None:
     await app.bot.set_my_commands([BotCommand(c, d) for c, d in COMMANDS])
     me = await app.bot.get_me()
-    log.info("Bot @%s is running. Press Ctrl+C to stop.", me.username)
+    app.bot_data["ticker"] = asyncio.create_task(ticker(app))
+    log.info("Bot @%s is running (scheduler every %d min). Press Ctrl+C to stop.", me.username, TICK_SECONDS // 60)
 
 
 def build_app(token: str, svc: BotService) -> Application:
@@ -224,7 +252,8 @@ def build_app(token: str, svc: BotService) -> Application:
     app.bot_data["service"] = svc
     for name, fn in [("start", start), ("persona", persona), ("myoffer", myoffer), ("stop", stop),
                      ("resume", resume), ("whoami", whoami), ("help", help_cmd), ("why", why),
-                     ("history", history), ("admin", admin), ("audit", audit), ("pause", pause),
+                     ("history", history), ("timetravel", timetravel), ("admin", admin), ("audit", audit),
+                     ("pause", pause),
                      ("unpause", unpause)]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(CallbackQueryHandler(on_button))

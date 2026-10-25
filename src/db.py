@@ -151,6 +151,8 @@ EXTRA_COLUMNS = {
         "expires_on": "TEXT",
         "send_at": "TEXT",
         "channel": "TEXT",            # telegram / simulation / cli
+        "ladder_step": "INTEGER",     # escalation step (0 = first offer)
+        "card_text": "TEXT",          # the Telegram card, so queued offers can be delivered later
     },
 }
 

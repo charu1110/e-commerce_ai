@@ -53,6 +53,7 @@ class State(BaseModel):
     is_holdout: bool = False
     ctx: ValidationContext | None = None
     allowed_options: list[dict] = Field(default_factory=list)
+    ladder_step: int = 0                    # escalation step (0 = first offer, not a follow-up)
 
     # 5 AI offer agent
     ai_input: dict[str, Any] = Field(default_factory=dict)

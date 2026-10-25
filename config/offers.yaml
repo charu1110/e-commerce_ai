@@ -141,6 +141,7 @@ headlines:
   new_customer: "Welcome, {first_name}!"
   browsing_no_buy: "Picked for you, {first_name}"
   salary_day: "Payday treat, {first_name}"
+  follow_up: "Still thinking about it, {first_name}?"
   default: "An offer for you, {first_name}"
 
 # Tried top to bottom; the first offer that passes every rule is sent. If none pass, nothing is sent.

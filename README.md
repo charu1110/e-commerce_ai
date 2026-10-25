@@ -104,6 +104,7 @@ python -m src.bot
 | `/persona` | Become a different customer |
 | `/why` | Why you got (or didn't get) your last offer, in plain words |
 | `/history` | Your last 5 offers and what you did with them |
+| `/timetravel N` | Demo: jump N days ahead to see offers expire and the follow-up ladder kick in |
 | `/stop` / `/resume` | Opt out of / back into offers |
 | `/whoami` | Shows your chat id (put it in `ADMIN_CHAT_IDS` for admin commands) |
 | `/help` | All commands |
@@ -118,6 +119,16 @@ python -m src.bot
 
 Offer cards have **Claim 🎁**, **Not now** and **Why this offer?** buttons; every tap is logged.
 If you see SSL certificate errors, make sure `truststore` from `requirements.txt` is installed.
+
+## Follow-ups (escalation ladder)
+
+If a customer ignores an offer (it expires without a tap), the next one follows the ladder in
+`config/rules.yaml`: free delivery after 3 days, then 10% off, then 15% off, then stop. Tapping
+"Not now" is respected (no follow-up). Every follow-up still passes all the rules. The bot runs the
+scheduler every 10 minutes: it marks expired offers, sends offers that were held back by quiet hours,
+and pushes follow-ups. Run one round by hand with `python -m src.scheduler` (add `--write` to act).
+
+Demo in Telegram: `/myoffer`, don't tap anything, `/timetravel 6`, `/myoffer` again.
 
 ## Red-team tests
 

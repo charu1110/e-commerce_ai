@@ -13,6 +13,8 @@ global:
   offer_validity_days: [2, 7]   # expiry must be within this range
   allow_stacking: false         # false = a customer can't hold two live offers at once
   max_bonus_points: 500         # never give more than 500 bonus points in one offer
+  escalation_overrides_cooldown: true  # a follow-up to an IGNORED offer may come after the ladder's wait_days,
+                                       # even inside the cooldown (an ignored offer cost us nothing)
   min_profit_after_discount_inr: 0  # the order must still make money after the discount (expected margin minus offer cost)
 
 costs:                          # how we estimate what an offer costs us
@@ -46,6 +48,9 @@ eligibility:                    # who should NOT get a discount
   return_abuse_categories: [fashion, footwear]  # ... on these categories
 
 escalation_ladder:              # if ignored, next offer after `wait_days`
+  # An offer that expires with no tap counts as ignored. 1st ignore -> step 1, 2nd -> step 2, ...
+  # "Not now" is respected: no follow-up, the normal cooldown applies. Each step still obeys every rule;
+  # if a step's offer type isn't allowed for the customer's segment, the ladder stops there.
   - { step: 1, type: free_delivery, wait_days: 3 }
   - { step: 2, type: percent_off, value: 10, wait_days: 3 }
   - { step: 3, type: percent_off, value: 15, wait_days: 5 }

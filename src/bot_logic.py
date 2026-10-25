@@ -11,12 +11,13 @@ import html
 import json
 import sqlite3
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable
 
 from src import db
 from src.engine.nodes import OFFER_STATUSES, in_holdout
 from src.engine.pipeline import run_pipeline
+from src import scheduler
 from src.engine.state import Deps
 from src.features import compute_features, customer_features
 from src.formatting import indian_number, plain_number
@@ -54,6 +55,7 @@ class BotService:
         self.deps = deps
         self.now = now
         self.admin_ids = set(admin_ids or ())
+        self.offsets: dict[int, int] = {}  # /timetravel: days each chat has jumped ahead (demo only)
         # Segment of every customer, computed once at start-up (used to offer persona choices).
         feats = compute_features(conn, now().date())
         self.segments: dict[str, str] = segment_all(feats, deps.segment_config)["segment"].to_dict()
@@ -134,7 +136,9 @@ class BotService:
         if not cid:
             return "You're not linked to a customer yet. Tap /start first.", None
         self.deps._spent_today.clear()  # always read today's real spend from the log
-        s = run_pipeline(cid, self.deps, self.now())
+        now = self.now_for(chat_id)
+        scheduler.expire_offers(self.conn, now, cid)
+        s = run_pipeline(cid, self.deps, now)
         if s.final_offer is not None:
             return s.card_text, s.decision_id
         if s.is_holdout:
@@ -168,7 +172,7 @@ class BotService:
             return ButtonResult("Here's why 👇", reply=self.why_text(row))
         if row["status"] not in ("sent", "queued"):
             return ButtonResult(f"This offer was already {row['status']}.", remove_buttons=True)
-        if row["expires_on"] and row["expires_on"] < self.now().date().isoformat():
+        if row["expires_on"] and row["expires_on"] < self.now_for(chat_id).date().isoformat():
             self._set_status(row, "expired")
             return ButtonResult("Sorry, this offer has expired.", remove_buttons=True,
                                 append_to_card="⌛ <i>Expired</i>")
@@ -338,4 +342,39 @@ class BotService:
             if violations:
                 lines.append("AI blocked: " + _e("; ".join(violations))[:300])
         return "\n".join(lines)
+
+    # ------------------------------------------------------------ clock, time travel, scheduler
+    def now_for(self, chat_id: int | None = None) -> datetime:
+        return self.now() + timedelta(days=self.offsets.get(chat_id, 0))
+
+    def time_travel(self, chat_id: int, days: int) -> str:
+        """Demo: jump this chat's clock ahead so expiry and the escalation ladder can be shown live."""
+        cid = self.linked_customer(chat_id)
+        if not cid:
+            return "Tap /start first."
+        days = max(0, min(int(days), 60))
+        self.offsets[chat_id] = days
+        now = self.now_for(chat_id)
+        expired = scheduler.expire_offers(self.conn, now, cid)
+        lines = [f"🕰 <b>It is now {now:%a %d %b}</b> ({days} day(s) ahead for you)."]
+        if expired:
+            lines.append(f"{expired} offer(s) expired without a tap, so they count as ignored.")
+        lines.append("Try /myoffer to see what the engine does next." if days else "Back to the real date.")
+        return "\n".join(lines)
+
+    def tick(self) -> list[tuple[int, str, int]]:
+        """Scheduler round for linked classmates. Returns (chat_id, card, decision_id) to push."""
+        now = self.now()
+        deps = replace(self.deps, on_demand=False, _spent_today={})
+        result = scheduler.tick(deps, now, linked_only=True)
+        pushes = []
+        for row in result.due_queued:
+            scheduler.mark_delivered(self.conn, row["decision_id"], row["customer_id"], now)
+            if row.get("card_text") and row.get("telegram_chat_id"):
+                pushes.append((row["telegram_chat_id"], row["card_text"], row["decision_id"]))
+        for s in result.follow_ups:
+            chat = s.features.get("telegram_chat_id")
+            if s.status == "sent" and chat:
+                pushes.append((int(chat), s.card_text, s.decision_id))
+        return pushes
 

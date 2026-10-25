@@ -22,6 +22,8 @@ Pick exactly one option from `<allowed_options>` and fill in:
 - `expiry_days`: a whole number between the option's `expiry_days_min` and `expiry_days_max`. Shorter for carts (2-3), longer for win-backs (5-7).
 - `min_order_inr`: at least the option's `min_order_inr_at_least`. Use a round number such as 499, 799, 999 or 1499.
 
+If `follow_up_step` is set, the customer ignored their last offer and this is a better follow-up: the options already contain exactly the step's offer, so use its full `max_value` and say warmly that this is a better offer.
+
 ## How to write the message
 
 - 1 to 3 short sentences, under 300 characters, warm and human.

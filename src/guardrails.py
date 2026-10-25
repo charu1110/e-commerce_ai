@@ -64,6 +64,7 @@ class GlobalRules(_Strict):
     offer_validity_days: tuple[int, int]
     allow_stacking: bool
     max_bonus_points: int = Field(ge=0)
+    escalation_overrides_cooldown: bool = True
     min_profit_after_discount_inr: float
 
     @model_validator(mode="after")
@@ -194,6 +195,7 @@ class ValidationContext:
     consecutive_discount_claims: int = 0
     other_names: frozenset[str] = frozenset()   # full names of OTHER customers (privacy check)
     allowed_options: list[dict] | None = None   # the AI's menu (Node 4); None = not an AI proposal (fallback)
+    cooldown_exempt: bool = False               # escalation follow-up to an ignored offer (Node 4 decides)
 
 
 @dataclass
@@ -345,7 +347,8 @@ def check_customer(p, ctx, rules) -> CheckResult:
         reasons.append("customer opted out of offers")
     if ctx.is_holdout:
         reasons.append("customer is in the holdout (control) group")
-    if ctx.days_since_last_offer is not None and ctx.days_since_last_offer < g.cooldown_days:
+    if (ctx.days_since_last_offer is not None and ctx.days_since_last_offer < g.cooldown_days
+            and not ctx.cooldown_exempt):
         reasons.append(f"last offer was {ctx.days_since_last_offer} days ago (cooldown {g.cooldown_days} days)")
     if ctx.days_since_last_order is not None and ctx.days_since_last_order < g.skip_if_bought_within_days:
         reasons.append(f"customer bought {ctx.days_since_last_order} days ago")

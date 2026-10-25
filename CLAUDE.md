@@ -294,6 +294,7 @@ python -m src.engine.pipeline --sample 500
 python -m src.engine.pipeline --customer C00001 --agent claude   # uses the API
 pytest -q
 python -m src.bot
+python -m src.scheduler            # one scheduler round (dry run unless --write)
 streamlit run dashboard/app.py
 python -m src.simulator --days 14
 ```
@@ -378,3 +379,9 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - `/why` explains the latest decision from `decision_log`: offers (trigger, segment reason, the AI's reason, or which rule blocked the AI and why a pre-approved offer went instead) and non-offers (skip reason, holdout).
 - `/history`: last 5 offers with status (waiting / claimed / not now / expired).
 - Admin (chat ids in `ADMIN_CHAT_IDS`, parsed in bot.py): `/admin` = today's stats (decisions, offers, claim rate, budget used, AI pass rate, top blocking rules) with Pause / Resume / Refresh buttons; `/audit C00123` = last 6 decisions with codes, costs and violations; `/pause` `/unpause` = kill switch (`settings.paused`, respected by Node 4).
+
+### Escalation & scheduler notes (Step 10)
+- Ignored = unclaimed offer past `expires_on` (Node 4 treats it so lazily; `scheduler.expire_offers` writes status `ignored` + an `expired` event). Consecutive ignores pick the ladder step: 1st → step 1, ... ; `stop` ends follow-ups. Dismissed ("Not now") and claimed offers reset the streak and the normal cooldown applies.
+- Node 4: follow-up waits `wait_days`, is exempt from the cooldown when `global.escalation_overrides_cooldown` (validator honours `ctx.cooldown_exempt`), restricts the AI menu to the step's type and value, and stops if the segment doesn't allow that type. Trigger becomes `follow_up` if nothing else fired; headline `follow_up` in offers.yaml. `decision_log.ladder_step` and `card_text` are stored.
+- `src/scheduler.py`: `expire_offers`, `due_queued` + `mark_delivered` (quiet-hours queue), `follow_up_candidates`, `tick()` (previews follow-ups in dry run first so waiting customers don't add log rows). CLI `python -m src.scheduler [--write]`.
+- Bot: ticker every 10 min (`TICK_SECONDS`) pushes due queued offers and follow-ups to linked chats; `/timetravel N` shifts that chat's clock (in memory) so expiry + ladder can be demoed; `my_offer` expires the customer's offers at the shifted time first.

@@ -44,12 +44,27 @@ def _clean(v):
         return v
 
 
-def _offer_history(deps: Deps, customer_id: str) -> list[dict]:
+def _offer_history(deps: Deps, customer_id: str, today: str | None = None) -> list[dict]:
+    """Offers this customer got, newest first. Unclaimed offers past expiry count as ignored."""
     rows = deps.conn.execute(
         f"""SELECT ts, status, offer_type, expires_on FROM decision_log
             WHERE customer_id = ? AND status IN ({','.join('?' * len(OFFER_STATUSES))})
             ORDER BY ts DESC, decision_id DESC""", (customer_id, *OFFER_STATUSES)).fetchall()
-    return [dict(r) for r in rows]
+    history = [dict(r) for r in rows]
+    for h in history:
+        if today and h["status"] in ("sent", "queued") and h["expires_on"] and h["expires_on"] < today:
+            h["status"] = "ignored"
+    return history
+
+
+def ignored_streak(history: list[dict]) -> int:
+    """How many offers in a row (most recent first) expired without a tap."""
+    streak = 0
+    for h in history:
+        if h["status"] not in ("ignored", "expired"):
+            break
+        streak += 1
+    return streak
 
 
 def _spent_today(deps: Deps, now: datetime) -> float:
@@ -192,16 +207,35 @@ def eligibility_check(s: State, deps: Deps) -> State:
     """Node 4 (rules): should this customer get ANY offer right now? First failing rule = skip reason."""
     s.path.append("4 Eligibility check")
     g, e = deps.rules.global_, deps.rules.eligibility
-    history = _offer_history(deps, s.customer_id)
+    history = _offer_history(deps, s.customer_id, s.now.date().isoformat())
     spent = _spent_today(deps, s.now)
     s.ctx = _build_context(s, deps, history, spent)
     ctx = s.ctx
 
+    # Escalation ladder: the customer ignored their last offer(s).
+    streak = ignored_streak(history)
+    step = None
+    if streak:
+        ladder = sorted(deps.rules.escalation_ladder, key=lambda x: x.step)
+        step = ladder[min(streak, len(ladder)) - 1]
+        if s.trigger in (None, "none"):
+            s.trigger, s.trigger_detail = "follow_up", f"ignored their last {streak} offer(s)"
+    waited = ctx.days_since_last_offer or 0
+    ladder_wait = step is not None and step.type != "stop" and waited < (step.wait_days or 0)
+    if step is not None and step.type != "stop" and not ladder_wait:
+        s.ladder_step = step.step
+        ctx.cooldown_exempt = g.escalation_overrides_cooldown
+
     reasons = [
         (db.is_paused(deps.conn), "All offers are paused (kill switch)."),
         (not ctx.marketing_opt_in, "Customer opted out of offers."),
+        (step is not None and step.type == "stop",
+         f"Escalation ladder finished: they ignored {streak} offers in a row, so we stop to avoid spamming."),
+        (ladder_wait, f"Escalation: waiting {step.wait_days if step else 0} days after the ignored offer "
+                      f"(it's been {waited})."),
         (s.trigger in (None, "none"), "No trigger: nothing suggests an offer would change behaviour today."),
-        (ctx.days_since_last_offer is not None and ctx.days_since_last_offer < g.cooldown_days,
+        (ctx.days_since_last_offer is not None and ctx.days_since_last_offer < g.cooldown_days
+         and not ctx.cooldown_exempt,
          f"Cooldown: last offer {ctx.days_since_last_offer} days ago (wait {g.cooldown_days} days)."),
         (ctx.has_active_offer and not g.allow_stacking, "Already holds a live offer (no stacking)."),
         (ctx.days_since_last_order is not None and ctx.days_since_last_order < g.skip_if_bought_within_days,
@@ -216,6 +250,15 @@ def eligibility_check(s: State, deps: Deps) -> State:
             return s
 
     s.allowed_options = allowed_options(ctx, deps.rules)
+    if s.ladder_step:
+        # A follow-up offers exactly the ladder's step: same type, no more than its value.
+        s.allowed_options = [{**o, "max_value": min(o["max_value"], step.value) if step.value else o["max_value"]}
+                             for o in s.allowed_options if o["offer_type"] == step.type]
+        if not s.allowed_options:
+            s.eligible = False
+            s.skip_reason = (f"Escalation step {step.step} would be {step.type}, which isn't allowed for this "
+                             f"{s.segment} customer, so the follow-ups stop here.")
+            return s
     ctx.allowed_options = s.allowed_options  # the validator checks the AI picked from this menu
     if not s.allowed_options:
         s.eligible, s.skip_reason = False, f"No offer type is allowed for this {s.segment} customer right now."
@@ -244,6 +287,7 @@ def ai_offer_agent(s: State, deps: Deps) -> State:
         "cart_items": f.get("open_cart_items"), "price_sensitivity": s.price_sensitivity,
         "occasion_name": occ.name if occ else None, "occasion_theme": occ.theme if occ else None,
         "occasion_emoji": occ.emoji if occ else None,
+        "follow_up_step": s.ladder_step or None,
     }
     s.ai_source = deps.agent_name
     try:
@@ -263,7 +307,7 @@ def guardrail_validator(s: State, deps: Deps) -> State:
     if s.validation.passed:
         s.final_offer, s.final_offer_id = s.validation.proposal, "AI"
         s.final_validation = s.validation
-        s.headline = deps.catalogue.headline_for(s.trigger, s.first_name)
+        s.headline = deps.catalogue.headline_for("follow_up" if s.ladder_step else s.trigger, s.first_name)
     return s
 
 
@@ -347,8 +391,9 @@ def _log_decision(s: State, deps: Deps) -> None:
         """INSERT INTO decision_log (customer_id, ts, trigger, segment, churn_risk, eligible, skip_reason,
                ai_proposal_json, validator_result, violations, fallback_used, final_offer_id, message_text,
                coupon_code, expected_cost, status, is_holdout, trigger_detail, segment_reason, ai_source,
-               offer_type, offer_value, offer_category, headline, expires_on, send_at, channel)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               offer_type, offer_value, offer_category, headline, expires_on, send_at, channel,
+               ladder_step, card_text)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (s.customer_id, s.now.isoformat(sep=" ", timespec="seconds"), s.trigger, s.segment, s.churn_risk,
          int(s.eligible), s.skip_reason, s.ai_raw if s.ai_raw is not None else None,
          v.to_json() if v else None, json.dumps(violations, ensure_ascii=False), int(s.fallback_used),
@@ -356,7 +401,8 @@ def _log_decision(s: State, deps: Deps) -> None:
          round(v.expected_cost_inr, 2) if (v and p) else 0.0, s.status, int(s.is_holdout), s.trigger_detail,
          s.segment_reason, s.ai_source, p.offer_type if p else None, p.value if p else None,
          p.category if p else None, s.headline or None, s.expires_on.isoformat() if s.expires_on else None,
-         s.send_at.isoformat(sep=" ", timespec="seconds") if s.send_at else None, deps.channel))
+         s.send_at.isoformat(sep=" ", timespec="seconds") if s.send_at else None, deps.channel,
+         s.ladder_step, s.card_text or None))
     s.decision_id = cur.lastrowid
     if s.status in ("sent", "queued"):
         deps.conn.execute("INSERT INTO offer_events (decision_id, customer_id, ts, event) VALUES (?,?,?,?)",

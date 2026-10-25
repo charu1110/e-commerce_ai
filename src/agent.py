@@ -37,6 +37,8 @@ def _hook(s: dict) -> str:
     """The personal sentence: why we're writing to them today."""
     t = s.get("trigger")
     hinglish = s.get("language") == "hinglish"
+    if t == "follow_up" or s.get("follow_up_step"):
+        return "your last offer slipped by, so here's a better one."
     if t == "abandoned_cart" and s.get("cart_items"):
         item = s["cart_items"].split(";")[0].strip()
         return f"your {item} is still waiting in your cart" + (", bas ek click door!" if hinglish else ".")
@@ -100,6 +102,8 @@ def build_offer(summary: dict, options: list[dict]) -> dict | None:
     value = 0.0
     if t == "percent_off":
         wanted = 15 if trigger in ("lapsed_buyer", "long_inactive") else 10
+        if summary.get("follow_up_step"):
+            wanted = opt["max_value"]  # escalation: the ladder already set how much more to give
         value = float(min(wanted, opt["max_value"]))
     elif t == "flat_off":
         value = float(min(opt["max_value"], math.floor(opt["max_pct_of_min_order"] / 100 * min_order / 50) * 50))
