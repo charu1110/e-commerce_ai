@@ -161,6 +161,12 @@ Pick the data source (simulation or live bot) in the sidebar.
 - **Audit log**: every decision with its reason; open one to see all 15 rule checks.
 - **Customer explorer**: a customer's segment, scores, monthly spend and decisions.
 - **Rules & calendar**: the current limits, segment rules, follow-up ladder and upcoming festivals.
+- **Rule editor**: change limits (max discount, budget, cooldown, holdout %, category caps, what each
+  segment may get, banned phrases) in a form. **Preview** runs today's decisions with the old and new
+  rules and tells you, before saving, e.g. *"This change affects about 50 customers today. Offers:
+  155 -> 175. Estimated discount cost: Rs 21,932 -> Rs 21,985."* Save only becomes possible after a
+  preview. Saving keeps every comment in `config/rules.yaml`, backs up the old file in
+  `config/history/`, and the bot uses the new rules on its next decision (no restart).
 
 ## Red-team tests
 

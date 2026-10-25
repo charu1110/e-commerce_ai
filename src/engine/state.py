@@ -7,6 +7,7 @@ of why we did (or did not) send an offer — it becomes one row in decision_log.
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Callable
@@ -107,6 +108,7 @@ class Deps:
     on_demand: bool = False                  # customer asked (/myoffer): send now even in quiet hours
     channel: str = "cli"
     _spent_today: dict[date, float] = field(default_factory=dict)
+    _config_mtime: float = 0.0                # newest config file time when rules were loaded
 
     @classmethod
     def load(cls, conn: sqlite3.Connection, agent: Agent | None = None, agent_name: str | None = None,
@@ -116,6 +118,32 @@ class Deps:
             agent, agent_name = stub_agent, "stub"
         margins = {r["category"]: r["margin_pct"] for r in conn.execute("SELECT category, margin_pct FROM categories")}
         names = frozenset(r["name"] for r in conn.execute("SELECT name FROM customers"))
+        kwargs.setdefault("_config_mtime", config_mtime())
         return cls(conn=conn, rules=load_rules(), catalogue=load_catalogue(), calendar=load_calendar(),
                    segment_config=load_segment_config(), category_margins=margins, all_names=names,
                    agent=agent, agent_name=agent_name or getattr(agent, "__name__", "agent"), **kwargs)
+
+    def refresh_config(self) -> bool:
+        """Reload rules / offers / segments / occasions if marketing saved a change. Returns True if reloaded.
+
+        Business reason: a rule saved in the dashboard takes effect on the bot's next decision, with no
+        restart. A broken file never replaces working rules: the old ones stay until it's fixed.
+        """
+        newest = config_mtime()
+        if newest <= self._config_mtime:
+            return False
+        try:
+            rules, catalogue, calendar, seg = load_rules(), load_catalogue(), load_calendar(), load_segment_config()
+        except Exception:  # invalid edit: keep the rules we have
+            return False
+        self.rules, self.catalogue, self.calendar, self.segment_config = rules, catalogue, calendar, seg
+        self._config_mtime = newest
+        return True
+
+
+CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
+
+
+def config_mtime() -> float:
+    return max((f.stat().st_mtime for f in CONFIG_DIR.glob("*.yaml")), default=0.0)
+

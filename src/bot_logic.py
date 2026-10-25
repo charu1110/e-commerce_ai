@@ -135,6 +135,7 @@ class BotService:
         cid = self.linked_customer(chat_id)
         if not cid:
             return "You're not linked to a customer yet. Tap /start first.", None
+        self.deps.refresh_config()  # rules saved in the dashboard apply right away
         self.deps._spent_today.clear()  # always read today's real spend from the log
         now = self.now_for(chat_id)
         scheduler.expire_offers(self.conn, now, cid)
@@ -365,6 +366,7 @@ class BotService:
     def tick(self) -> list[tuple[int, str, int]]:
         """Scheduler round for linked classmates. Returns (chat_id, card, decision_id) to push."""
         now = self.now()
+        self.deps.refresh_config()
         deps = replace(self.deps, on_demand=False, _spent_today={})
         result = scheduler.tick(deps, now, linked_only=True)
         pushes = []

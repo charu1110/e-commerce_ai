@@ -8,7 +8,9 @@ simulation copy; never writes.
 """
 from __future__ import annotations
 
+import copy
 import json
+import re
 import sqlite3
 import sys
 from datetime import date
@@ -23,10 +25,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src import reporting  # noqa: E402
+from src.db import connect as db_connect  # noqa: E402
 from src.db import DB_PATH  # noqa: E402
 from src.features import customer_features  # noqa: E402
 from src.formatting import indian_number  # noqa: E402
-from src.guardrails import CHECK_LABELS  # noqa: E402
+from src.guardrails import CHECK_LABELS, RULES_PATH, load_rules, parse_rules  # noqa: E402
+from src.rule_editor import preview_change, readable_errors, save_rules  # noqa: E402
 from src.occasions import load_calendar  # noqa: E402
 from src.segments import assign_segment  # noqa: E402
 from src.simulator import RESULTS, SIM_DB  # noqa: E402
@@ -86,7 +90,7 @@ if not available:
     st.stop()
 source = st.sidebar.radio("Data", list(available))
 db_path = available[source]
-page = st.sidebar.radio("Page", ["Results", "Audit log", "Customer explorer", "Rules & calendar"])
+page = st.sidebar.radio("Page", ["Results", "Audit log", "Customer explorer", "Rules & calendar", "Rule editor"])
 st.sidebar.caption("Simulation: `python -m src.simulator --days 14`\n\nRules live in `config/*.yaml`.")
 log = load_log(db_path)
 is_sim = db_path == str(SIM_DB)
@@ -328,5 +332,149 @@ def rules_page():
     st.dataframe(pd.DataFrame(rows).sort_values("from"), hide_index=True, use_container_width=True)
 
 
+# ================================================================== Rule editor
+OFFER_TYPE_NAMES = ["percent_off", "flat_off", "free_delivery", "bonus_points", "early_access"]
+
+
+def rule_comments(text: str) -> dict[str, str]:
+    """key -> its plain-English comment in rules.yaml (shown as help text)."""
+    out = {}
+    for line in text.splitlines():
+        m = re.match(r"^\s+(\w+):[^#]*#\s*(.+)$", line)
+        if m and m.group(1) not in out:
+            out[m.group(1)] = m.group(2).strip()
+    return out
+
+
+def flatten(d: dict, prefix: str = "") -> dict:
+    out = {}
+    for k, v in d.items():
+        key = f"{prefix}{k}"
+        if isinstance(v, dict):
+            out.update(flatten(v, key + " > "))
+        else:
+            out[key] = v
+    return out
+
+
+def editor_page():
+    st.title("Rule editor")
+    st.caption("Change a limit, preview what it does to today's customers, then save. Saving keeps every "
+               "comment in `config/rules.yaml` and backs up the old file in `config/history/`. "
+               "The bot uses saved rules on its next decision, no restart needed.")
+    text = RULES_PATH.read_text(encoding="utf-8")
+    current = yaml.safe_load(text)
+    tips = rule_comments(text)
+    new = copy.deepcopy(current)
+    g, e = new["global"], new["eligibility"]
+
+    st.subheader("Money")
+    c = st.columns(4)
+    g["max_discount_pct"] = c[0].number_input("Max discount (%)", 0, 100, int(g["max_discount_pct"]), 1,
+                                              help=tips.get("max_discount_pct"))
+    g["max_flat_discount_inr"] = c[1].number_input("Max flat discount (₹)", 0, 10000, int(g["max_flat_discount_inr"]),
+                                                   50, help=tips.get("max_flat_discount_inr"))
+    g["min_order_value_inr"] = c[2].number_input("Minimum order (₹)", 0, 10000, int(g["min_order_value_inr"]), 50,
+                                                 help=tips.get("min_order_value_inr"))
+    g["daily_budget_inr"] = c[3].number_input("Daily budget (₹)", 0, 1000000, int(g["daily_budget_inr"]), 1000,
+                                              help=tips.get("daily_budget_inr"))
+
+    st.subheader("Who gets an offer")
+    c = st.columns(4)
+    g["cooldown_days"] = c[0].number_input("Days between offers", 0, 60, int(g["cooldown_days"]), 1,
+                                           help=tips.get("cooldown_days"))
+    g["skip_if_bought_within_days"] = c[1].number_input("Skip if bought in last N days", 0, 30,
+                                                        int(g["skip_if_bought_within_days"]), 1,
+                                                        help=tips.get("skip_if_bought_within_days"))
+    g["holdout_pct"] = c[2].slider("Holdout group (%)", 0, 50, int(g["holdout_pct"]), help=tips.get("holdout_pct"))
+    e["skip_if_buy_anyway_above"] = c[3].slider("Skip if 'would buy anyway' above", 0.0, 1.0,
+                                                float(e["skip_if_buy_anyway_above"]), 0.05,
+                                                help=tips.get("skip_if_buy_anyway_above"))
+    lo, hi = g["offer_validity_days"]
+    g["offer_validity_days"] = list(st.slider("Offer validity (days)", 1, 14, (int(lo), int(hi)),
+                                              help=tips.get("offer_validity_days")))
+
+    st.subheader("Max discount by category (%)")
+    cats = new["category_max_discount_pct"]
+    cols = st.columns(len(cats))
+    for col, cat in zip(cols, list(cats)):
+        cats[cat] = col.number_input(cat, 0, 100, int(cats[cat]), 1, key=f"cat_{cat}")
+
+    st.subheader("What each segment may get")
+    for seg, rule in new["segment_rules"].items():
+        c1, c2 = st.columns([1, 4])
+        rule["max_discount_pct"] = c1.number_input(f"{seg}: max %", 0, 100, int(rule["max_discount_pct"]), 1,
+                                                   key=f"seg_pct_{seg}")
+        rule["allowed_types"] = c2.multiselect(f"{seg}: allowed offers", OFFER_TYPE_NAMES, rule["allowed_types"],
+                                               key=f"seg_types_{seg}")
+
+    st.subheader("Message")
+    m = new["message"]
+    c1, c2 = st.columns([1, 3])
+    m["max_length_chars"] = c1.number_input("Max message length", 50, 1000, int(m["max_length_chars"]), 10)
+    phrases = c2.text_area("Banned phrases (one per line)", "\n".join(m["banned_phrases"]), height=120)
+    m["banned_phrases"] = [x.strip() for x in phrases.splitlines() if x.strip()]
+
+    # ---- what changed, is it valid?
+    before, after = flatten(current), flatten(new)
+    changes = [(k, before.get(k), v) for k, v in after.items() if before.get(k) != v]
+    errors = []
+    try:
+        new_rules = parse_rules(new)
+    except Exception as exc:  # pydantic ValidationError: show plain sentences
+        new_rules, errors = None, readable_errors(exc)
+    if not changes:
+        st.info("No changes yet. Edit a value above to preview its impact.")
+        return
+    st.subheader("Your changes")
+    st.dataframe(pd.DataFrame(changes, columns=["rule", "now", "new"]).astype(str), hide_index=True,
+                 use_container_width=True)
+    for err in errors:
+        st.error(err)
+    if errors:
+        return
+
+    key = json.dumps(new, sort_keys=True, default=str)
+    if st.button("Preview impact on today's customers", type="primary"):
+        with st.spinner("Running today's decisions with the current and the new rules…"):
+            conn = db_connect(str(DB_PATH))
+            result = preview_change(conn, load_rules(), new_rules, sample=1000)
+            conn.close()
+        st.session_state["preview"] = (key, result)
+
+    stored = st.session_state.get("preview")
+    if not stored or stored[0] != key:
+        st.caption("Preview the change before you can save it.")
+        return
+    pv = stored[1]
+    delta = pv.cost_new - pv.cost_old
+    st.success(f"This change affects about **{pv.affected:,} customers** today. "
+               f"Offers: {pv.offers_old:,} → **{pv.offers_new:,}**. "
+               f"Estimated discount cost: {inr(pv.cost_old)} → **{inr(pv.cost_new)}** "
+               f"({'+' if delta >= 0 else '-'}{inr(abs(delta))}).")
+    st.caption(f"Estimated from {pv.sample:,} of {pv.population:,} customers (decisions for today, dry run: "
+               "nothing is sent or saved).")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**By segment**")
+        seg = pd.DataFrame(pv.by_segment).rename(columns={"offers_old": "offers now", "offers_new": "offers new",
+                                                          "cost_old": "₹ now", "cost_new": "₹ new"})
+        st.dataframe(seg, hide_index=True, use_container_width=True)
+    with c2:
+        st.markdown("**Examples of customers who would get something different**")
+        st.dataframe(pd.DataFrame(pv.examples), hide_index=True, use_container_width=True)
+        if pv.new_skip_reasons:
+            st.markdown("**Why some would now get nothing**")
+            st.dataframe(pd.DataFrame(pv.new_skip_reasons), hide_index=True, use_container_width=True)
+    if st.button("Save these rules", type="primary"):
+        try:
+            backup = save_rules(new)
+        except Exception as exc:
+            st.error(f"Not saved: {exc}")
+            return
+        st.session_state.pop("preview", None)
+        st.success(f"Saved to config/rules.yaml. Previous version backed up as {backup.name}.")
+
+
 {"Results": results_page, "Audit log": audit_page, "Customer explorer": customer_page,
- "Rules & calendar": rules_page}[page]()
+ "Rules & calendar": rules_page, "Rule editor": editor_page}[page]()
