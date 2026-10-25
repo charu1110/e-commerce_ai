@@ -14,10 +14,12 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Callable
 
-from src.engine.nodes import in_holdout
+from src import db
+from src.engine.nodes import OFFER_STATUSES, in_holdout
 from src.engine.pipeline import run_pipeline
 from src.engine.state import Deps
 from src.features import compute_features, customer_features
+from src.formatting import indian_number, plain_number
 from src.guardrails import CHECK_LABELS
 from src.segments import assign_segment, segment_all
 
@@ -46,10 +48,12 @@ def _e(text) -> str:
 
 
 class BotService:
-    def __init__(self, conn: sqlite3.Connection, deps: Deps, now: Callable[[], datetime] = datetime.now):
+    def __init__(self, conn: sqlite3.Connection, deps: Deps, now: Callable[[], datetime] = datetime.now,
+                 admin_ids: set[int] | None = None):
         self.conn = conn
         self.deps = deps
         self.now = now
+        self.admin_ids = set(admin_ids or ())
         # Segment of every customer, computed once at start-up (used to offer persona choices).
         feats = compute_features(conn, now().date())
         self.segments: dict[str, str] = segment_all(feats, deps.segment_config)["segment"].to_dict()
@@ -192,7 +196,146 @@ class BotService:
                 pass
             lines.append(f"• <b>Why this offer:</b> {_e(reason)}" if reason else "• Picked by our offer assistant.")
         else:
-            lines.append("• Our assistant's first idea broke one of our rules, so we sent a pre-approved offer instead.")
+            lines.append(f"• {self._fallback_reason(row)}")
         lines.append(f"• <b>Safety:</b> it passed all {len(CHECK_LABELS)} rule checks (discount caps, budget, "
                      "profit margin, message accuracy) before it was sent.")
         return "\n".join(lines)
+
+    def _fallback_reason(self, row: dict) -> str:
+        try:
+            violations = json.loads(row["violations"] or "[]")
+        except json.JSONDecodeError:
+            violations = []
+        if violations and violations[0].startswith("ai_error"):
+            return "Our offer assistant didn't answer in time, so we sent a pre-approved offer instead."
+        blocked = [CHECK_LABELS.get(v.split(":", 1)[0], v.split(":", 1)[0]) for v in violations]
+        if blocked:
+            return ("Our assistant's first idea was blocked by our rules (" + "; ".join(dict.fromkeys(blocked)).lower()
+                    + "), so we sent a pre-approved offer instead.")
+        return "We sent one of our pre-approved offers."
+
+    # ------------------------------------------------------------ /why and /history
+    def _latest(self, customer_id: str) -> dict | None:
+        row = self.conn.execute("SELECT * FROM decision_log WHERE customer_id = ? "
+                                "ORDER BY ts DESC, decision_id DESC LIMIT 1", (customer_id,)).fetchone()
+        return dict(row) if row else None
+
+    def why_last(self, chat_id: int) -> str:
+        """Explain the most recent decision for this classmate, offer or no offer."""
+        cid = self.linked_customer(chat_id)
+        if not cid:
+            return "Tap /start first."
+        row = self._latest(cid)
+        if row is None:
+            return "We haven't made a decision for you yet. Try /myoffer."
+        if row["final_offer_id"]:
+            return self.why_text(row)
+        seg = row["segment"]
+        title = "🧪 <b>Why no offer?</b>" if row["is_holdout"] else "🙅 <b>Why no offer?</b>"
+        lines = [title, ""]
+        if row["trigger"] and row["trigger"] != "none":
+            lines.append(f"• <b>What we noticed:</b> {_e(row['trigger_detail'] or row['trigger'])}")
+        if seg:
+            lines.append(f"• <b>Your shopper type:</b> {SEGMENT_LABELS.get(seg, seg)}: {_e(row['segment_reason'] or '')}")
+        lines.append(f"• <b>Decision:</b> {_e(row['skip_reason'] or 'no offer')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _short_offer(row: dict) -> str:
+        t, v, cat = row["offer_type"], row["offer_value"] or 0, row["offer_category"] or "everything"
+        if t == "percent_off":
+            return f"{plain_number(v)}% off {cat}"
+        if t == "flat_off":
+            return f"₹{indian_number(v)} off {cat}"
+        if t == "bonus_points":
+            return f"{plain_number(v)} bonus points"
+        if t == "free_delivery":
+            return "Free delivery"
+        return "Early access"
+
+    STATUS_ICONS = {"sent": "📨 waiting", "queued": "🕗 queued", "claimed": "✅ claimed", "dismissed": "👌 not now",
+                    "ignored": "💤 ignored", "expired": "⌛ expired"}
+
+    def history(self, chat_id: int, limit: int = 5) -> str:
+        cid = self.linked_customer(chat_id)
+        if not cid:
+            return "Tap /start first."
+        rows = self.conn.execute(
+            f"""SELECT * FROM decision_log WHERE customer_id = ? AND status IN ({','.join('?' * len(OFFER_STATUSES))})
+                ORDER BY ts DESC, decision_id DESC LIMIT ?""", (cid, *OFFER_STATUSES, limit)).fetchall()
+        if not rows:
+            return "No offers yet. Try /myoffer."
+        lines = ["🧾 <b>Your last offers</b>", ""]
+        for r in map(dict, rows):
+            day = datetime.fromisoformat(r["ts"]).strftime("%d %b")
+            src = "AI" if r["final_offer_id"] == "AI" else "pre-approved"
+            lines.append(f"• {day}: <b>{_e(self._short_offer(r))}</b> ({src}), "
+                         f"{self.STATUS_ICONS.get(r['status'], r['status'])}")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------ admin
+    def is_admin(self, chat_id: int) -> bool:
+        return chat_id in self.admin_ids
+
+    def set_paused(self, paused: bool) -> None:
+        db.set_setting(self.conn, "paused", "1" if paused else "0")
+
+    def stats_text(self) -> str:
+        """Today's numbers for the admin: decisions, offers, claims, money, safety."""
+        today = self.now().date().isoformat()
+        rows = [dict(r) for r in self.conn.execute("SELECT * FROM decision_log WHERE DATE(ts) = ?", (today,))]
+        by = {}
+        for r in rows:
+            by[r["status"]] = by.get(r["status"], 0) + 1
+        offers = [r for r in rows if r["status"] in OFFER_STATUSES]
+        claimed = by.get("claimed", 0)
+        spent = sum(r["expected_cost"] or 0 for r in offers)
+        budget = self.deps.rules.global_.daily_budget_inr
+        ai_tried = [r for r in rows if r["ai_proposal_json"] is not None or (r["violations"] or "").startswith('["ai_error')]
+        ai_passed = sum(1 for r in offers if r["final_offer_id"] == "AI")
+        blocked: dict[str, int] = {}
+        for r in ai_tried:
+            for v in json.loads(r["violations"] or "[]"):
+                name = v.split(":", 1)[0]
+                blocked[name] = blocked.get(name, 0) + 1
+        linked = self.conn.execute("SELECT COUNT(*) FROM customers WHERE telegram_chat_id IS NOT NULL").fetchone()[0]
+        paused = db.is_paused(self.conn)
+        lines = [f"📊 <b>Today ({self.now():%a %d %b})</b>", "",
+                 f"{'⏸ <b>ALL OFFERS PAUSED</b>' if paused else '▶️ Offers running'} · {linked} classmates linked",
+                 f"Decisions: {len(rows)} · offers out: {len(offers)} · skipped: {by.get('skipped', 0)} · "
+                 f"holdout: {by.get('holdout', 0)} · no offer: {by.get('no_offer', 0)}",
+                 f"Claimed: {claimed} ({claimed / len(offers):.0%} of offers)" if offers else "Claimed: 0",
+                 f"Budget used: ₹{indian_number(spent)} of ₹{indian_number(budget)}",
+                 f"AI offers that passed the rules: {ai_passed} of {len(ai_tried)}"]
+        if blocked:
+            top = sorted(blocked.items(), key=lambda kv: -kv[1])[:4]
+            lines.append("Blocked by: " + ", ".join(f"{CHECK_LABELS.get(k, k).lower()} ({n})" for k, n in top))
+        return "\n".join(lines)
+
+    def audit_text(self, customer_id: str, limit: int = 6) -> str:
+        """A customer's decision trail, newest first, for the admin."""
+        customer_id = customer_id.strip().upper()
+        cust = self.conn.execute("SELECT name FROM customers WHERE customer_id = ?", (customer_id,)).fetchone()
+        if not cust:
+            return f"No customer {_e(customer_id)}."
+        rows = [dict(r) for r in self.conn.execute(
+            "SELECT * FROM decision_log WHERE customer_id = ? ORDER BY ts DESC, decision_id DESC LIMIT ?",
+            (customer_id, limit))]
+        lines = [f"🔎 <b>Audit: {customer_id} ({_e(cust['name'])})</b>"]
+        if not rows:
+            return lines[0] + "\nNo decisions yet."
+        for r in rows:
+            when = datetime.fromisoformat(r["ts"]).strftime("%d %b %H:%M")
+            lines += ["", f"<b>#{r['decision_id']} · {when} · {_e(r['status'])}</b>",
+                      f"trigger: {_e(r['trigger'])} ({_e(r['trigger_detail'] or '')})",
+                      f"segment: {_e(r['segment'])}, churn risk {r['churn_risk']}"]
+            if r["final_offer_id"]:
+                lines.append(f"offer: {_e(self._short_offer(r))} via {_e(r['final_offer_id'])}, "
+                             f"code {_e(r['coupon_code'])}, est. ₹{indian_number(r['expected_cost'] or 0)}")
+            if r["skip_reason"]:
+                lines.append(f"reason: {_e(r['skip_reason'])}")
+            violations = json.loads(r["violations"] or "[]")
+            if violations:
+                lines.append("AI blocked: " + _e("; ".join(violations))[:300])
+        return "\n".join(lines)
+

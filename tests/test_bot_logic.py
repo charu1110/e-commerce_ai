@@ -1,4 +1,5 @@
 """Bot behaviour without Telegram: linking, offers, buttons, opt-out."""
+import json
 import shutil
 from datetime import datetime, time
 
@@ -123,3 +124,77 @@ def test_bot_app_builds_without_network():
     app = build_app("123456:TEST-TOKEN", svc=None)
     names = {c for h in app.handlers[0] for c in getattr(h, "commands", [])}
     assert {c for c, _ in COMMANDS} <= names
+
+
+# ------------------------------------------------------------------ Step 9: /why, /history, admin
+def test_why_before_any_decision(svc):
+    svc.link(ALICE, "lapsing")
+    assert "Try /myoffer" in svc.why_last(ALICE)
+
+
+def test_why_explains_an_offer(svc):
+    svc.link(ALICE, "lapsing")
+    svc.my_offer(ALICE)
+    text = svc.why_last(ALICE)
+    assert "Why this offer" in text and "What we noticed" in text
+
+
+def test_why_explains_no_offer(svc):
+    svc.link(ALICE, "lapsing")
+    svc.my_offer(ALICE)
+    svc.my_offer(ALICE)  # second ask: cooldown
+    text = svc.why_last(ALICE)
+    assert "Why no offer" in text and "Cooldown" in text
+
+
+def test_why_names_the_rule_that_blocked_the_ai(gen_db_path, tmp_path):
+    path = tmp_path / "why.db"
+    shutil.copy(gen_db_path, path)
+    conn = db.connect(path)
+    greedy = lambda summary, options: json.dumps({  # noqa: E731
+        "offer_type": "percent_off", "value": 90, "category": options[0]["category"], "expiry_days": 5,
+        "min_order_inr": 999, "message": "Hi, 90% off! Valid for 5 days.", "reason": "greedy"})
+    s = BotService(conn, Deps.load(conn, agent=greedy, agent_name="greedy", on_demand=True), now=lambda: NOON)
+    s.link(ALICE, "lapsing")
+    _, d = s.my_offer(ALICE)
+    assert d is not None
+    text = s.why_last(ALICE)
+    assert "blocked by our rules" in text and "discount above a cap" in text
+    conn.close()
+
+
+def test_history_lists_offers_with_status(svc):
+    svc.link(ALICE, "lapsing")
+    _, d = svc.my_offer(ALICE)
+    svc.handle_button(ALICE, "claim", d)
+    text = svc.history(ALICE)
+    assert "Your last offers" in text and "claimed" in text
+
+
+def test_admin_only(svc):
+    assert not svc.is_admin(ALICE)
+    svc.admin_ids = {ALICE}
+    assert svc.is_admin(ALICE) and not svc.is_admin(BOB)
+
+
+def test_stats_and_kill_switch(svc):
+    svc.link(ALICE, "lapsing")
+    svc.my_offer(ALICE)
+    text = svc.stats_text()
+    assert "offers out: 1" in text and "Budget used" in text and "Offers running" in text
+    svc.set_paused(True)
+    svc.link(BOB, "deal_hunter")
+    reply, d = svc.my_offer(BOB)
+    assert d is None and "kill switch" in reply
+    assert "PAUSED" in svc.stats_text()
+    svc.set_paused(False)
+    assert svc.my_offer(BOB)[1] is not None
+
+
+def test_audit_trail(svc):
+    cid = svc.link(ALICE, "lapsing")
+    svc.my_offer(ALICE)
+    svc.my_offer(ALICE)
+    text = svc.audit_text(cid.lower())
+    assert f"Audit: {cid}" in text and "sent" in text and "skipped" in text and "Cooldown" in text
+    assert "No customer" in svc.audit_text("C99999")

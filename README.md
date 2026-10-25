@@ -102,9 +102,19 @@ python -m src.bot
 |---|---|
 | `/myoffer` | Runs the full pipeline for you now and shows the offer card (or why there is none) |
 | `/persona` | Become a different customer |
+| `/why` | Why you got (or didn't get) your last offer, in plain words |
+| `/history` | Your last 5 offers and what you did with them |
 | `/stop` / `/resume` | Opt out of / back into offers |
 | `/whoami` | Shows your chat id (put it in `ADMIN_CHAT_IDS` for admin commands) |
 | `/help` | All commands |
+
+**Admin commands** (only for chat ids listed in `ADMIN_CHAT_IDS` in `.env`; get yours with `/whoami`):
+
+| Command | What it does |
+|---|---|
+| `/admin` | Today's stats: offers sent, claim rate, budget used, how often the AI passed the rules, with Pause / Resume buttons |
+| `/audit C00123` | One customer's full decision trail: triggers, offers, codes, costs, blocked AI proposals |
+| `/pause` / `/unpause` | Kill switch: stop or restart all offers |
 
 Offer cards have **Claim 🎁**, **Not now** and **Why this offer?** buttons; every tap is logged.
 If you see SSL certificate errors, make sure `truststore` from `requirements.txt` is installed.

@@ -373,3 +373,8 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - New check `offer_in_menu` (15 checks now): an AI proposal must match one of Node 4's `allowed_options` (type + category) at or below its `max_value`. `ValidationContext.allowed_options` is set by Node 4; Node 10 and `fallback_offer()` clear it, since fallbacks are pre-approved.
 - Message checks run on `_clean()` text (NFKC + invisible characters removed); hidden/bidi characters are themselves a violation.
 - `build_user_message` escapes `<`/`>` inside the JSON so customer text can't close the `<customer_data>` tag.
+
+### /why, history and admin notes (Step 9)
+- `/why` explains the latest decision from `decision_log`: offers (trigger, segment reason, the AI's reason, or which rule blocked the AI and why a pre-approved offer went instead) and non-offers (skip reason, holdout).
+- `/history`: last 5 offers with status (waiting / claimed / not now / expired).
+- Admin (chat ids in `ADMIN_CHAT_IDS`, parsed in bot.py): `/admin` = today's stats (decisions, offers, claim rate, budget used, AI pass rate, top blocking rules) with Pause / Resume / Refresh buttons; `/audit C00123` = last 6 decisions with codes, costs and violations; `/pause` `/unpause` = kill switch (`settings.paused`, respected by Node 4).

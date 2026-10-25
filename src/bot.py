@@ -28,6 +28,8 @@ COMMANDS = [
     ("start", "Become a customer and see who you are"),
     ("myoffer", "Check if there's an offer for you now"),
     ("persona", "Switch to a different customer"),
+    ("why", "Why did I get (or not get) my last offer?"),
+    ("history", "Your last 5 offers"),
     ("stop", "Stop receiving offers"),
     ("resume", "Start receiving offers again"),
     ("whoami", "Show your Telegram chat id"),
@@ -114,11 +116,71 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await reply(update, HELP)
 
 
+async def why(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await reply(update, await call(service(context).why_last, update.effective_chat.id))
+
+
+async def history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await reply(update, await call(service(context).history, update.effective_chat.id))
+
+
+# ---------------------------------------------------------------- admin (ADMIN_CHAT_IDS only)
+def admin_buttons(paused: bool) -> InlineKeyboardMarkup:
+    toggle = ("▶️ Resume all offers", "admin:resume") if paused else ("⏸ Pause all offers", "admin:pause")
+    return InlineKeyboardMarkup([[InlineKeyboardButton(toggle[0], callback_data=toggle[1]),
+                                  InlineKeyboardButton("🔄 Refresh", callback_data="admin:refresh")]])
+
+
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    svc = service(context)
+    if not svc.is_admin(update.effective_chat.id):
+        await reply(update, "This command is for admins only.")
+        return
+    text = await call(svc.stats_text)
+    await reply(update, text, admin_buttons(await call(db.is_paused, svc.conn)))
+
+
+async def audit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    svc = service(context)
+    if not svc.is_admin(update.effective_chat.id):
+        await reply(update, "This command is for admins only.")
+        return
+    if not context.args:
+        await reply(update, "Usage: /audit C00123")
+        return
+    await reply(update, await call(svc.audit_text, context.args[0]))
+
+
+async def pause(update: Update, context: ContextTypes.DEFAULT_TYPE, paused: bool = True) -> None:
+    svc = service(context)
+    if not svc.is_admin(update.effective_chat.id):
+        await reply(update, "This command is for admins only.")
+        return
+    await call(svc.set_paused, paused)
+    await reply(update, "⏸ All offers are paused (kill switch on)." if paused else "▶️ Offers are running again.")
+
+
+async def unpause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await pause(update, context, paused=False)
+
+
 # ---------------------------------------------------------------- buttons
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     svc, chat_id = service(context), update.effective_chat.id
     action, _, arg = (query.data or "").partition(":")
+
+    if action == "admin":
+        if not svc.is_admin(chat_id):
+            await query.answer("Admins only.")
+            return
+        if arg in ("pause", "resume"):
+            await call(svc.set_paused, arg == "pause")
+        await query.answer({"pause": "Paused", "resume": "Resumed"}.get(arg, "Refreshed"))
+        paused = await call(db.is_paused, svc.conn)
+        await query.edit_message_text(await call(svc.stats_text), parse_mode=ParseMode.HTML,
+                                      reply_markup=admin_buttons(paused))
+        return
 
     if action == "persona":
         await query.answer("Finding you a customer…")
@@ -161,7 +223,9 @@ def build_app(token: str, svc: BotService) -> Application:
     app = Application.builder().token(token).post_init(post_init).build()
     app.bot_data["service"] = svc
     for name, fn in [("start", start), ("persona", persona), ("myoffer", myoffer), ("stop", stop),
-                     ("resume", resume), ("whoami", whoami), ("help", help_cmd)]:
+                     ("resume", resume), ("whoami", whoami), ("help", help_cmd), ("why", why),
+                     ("history", history), ("admin", admin), ("audit", audit), ("pause", pause),
+                     ("unpause", unpause)]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_error_handler(on_error)
@@ -183,7 +247,11 @@ def main() -> None:
     else:
         log.info("Offer agent: %s", agent_name)
     log.info("Loading customers and rules…")
-    svc = BotService(conn, Deps.load(conn, agent=agent, agent_name=agent_name, on_demand=True, channel="telegram"))
+    admin_ids = {int(x) for x in os.getenv("ADMIN_CHAT_IDS", "").replace(" ", "").split(",") if x.lstrip("-").isdigit()}
+    if not admin_ids:
+        log.warning("ADMIN_CHAT_IDS is empty: /admin, /audit and /pause are disabled. Use /whoami to get your id.")
+    svc = BotService(conn, Deps.load(conn, agent=agent, agent_name=agent_name, on_demand=True, channel="telegram"),
+                     admin_ids=admin_ids)
     log.info("Ready: %d customers, %d already linked to Telegram.", len(svc.segments),
              conn.execute("SELECT COUNT(*) FROM customers WHERE telegram_chat_id IS NOT NULL").fetchone()[0])
     build_app(token, svc).run_polling(allowed_updates=Update.ALL_TYPES)
