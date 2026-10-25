@@ -7,7 +7,7 @@ fallback passes, we send nothing (doing nothing is always safe).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
@@ -128,6 +128,7 @@ def fallback_offer(ctx: ValidationContext, rules: Rules | None = None,
     """First pre-approved offer for this segment that passes every rule, or nothing."""
     rules = rules or load_rules()
     catalogue = catalogue or load_catalogue()
+    ctx = replace(ctx, allowed_options=None)  # pre-approved offers aren't limited to the AI's menu
     out = FallbackResult(None, None, None)
     for oid in catalogue.fallbacks.get(ctx.segment, []):
         offer = catalogue.offers[oid]

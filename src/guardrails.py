@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 RULES_PATH = Path(__file__).resolve().parent.parent / "config" / "rules.yaml"
 
@@ -28,6 +29,7 @@ OfferType = Literal[OFFER_TYPES]
 # Plain-English names for each check (dashboard "blocked by rule" chart).
 CHECK_LABELS = {
     "schema": "AI output is not a valid offer",
+    "offer_in_menu": "AI picked an offer that wasn't on its menu",
     "offer_type_allowed": "Offer type not allowed for this segment",
     "discount_caps": "Discount above a cap (global / category / segment)",
     "flat_cap_min_order": "Flat amount or minimum order out of range",
@@ -151,12 +153,19 @@ class OfferProposal(BaseModel):
     """The ONLY shape an offer may take. Strict: no extra fields, no "10" for 10."""
     model_config = ConfigDict(extra="forbid", strict=True)
     offer_type: OfferType
-    value: float = Field(ge=0)          # % for percent_off, Rs for flat_off, points for bonus_points
+    value: float = Field(ge=0, allow_inf_nan=False)  # % for percent_off, Rs for flat_off, points for bonus_points
     category: str | None = None         # None = store-wide
     expiry_days: int
-    min_order_inr: float | None = None  # None = global minimum
+    min_order_inr: float | None = Field(default=None, allow_inf_nan=False)  # None = global minimum
     message: str = Field(min_length=1)
     reason: str = Field(min_length=1)
+
+    @field_validator("message", "reason")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("must not be blank")
+        return v
 
 
 @dataclass
@@ -184,6 +193,7 @@ class ValidationContext:
     return_rate: float | None = None
     consecutive_discount_claims: int = 0
     other_names: frozenset[str] = frozenset()   # full names of OTHER customers (privacy check)
+    allowed_options: list[dict] | None = None   # the AI's menu (Node 4); None = not an AI proposal (fallback)
 
 
 @dataclass
@@ -261,6 +271,21 @@ def check_offer_type(p, ctx, rules) -> CheckResult:
         return _fail("offer_type_allowed",
                      f"{p.offer_type} is not allowed for {ctx.segment} (allowed: {', '.join(seg.allowed_types)}).")
     return _ok("offer_type_allowed")
+
+
+def check_offer_in_menu(p, ctx, rules) -> CheckResult:
+    """The AI may only pick from the options the rules gave it, at or below each option's max."""
+    if ctx.allowed_options is None:
+        return _ok("offer_in_menu")
+    matches = [o for o in ctx.allowed_options
+               if o.get("offer_type") == p.offer_type and o.get("category") == p.category]
+    if not matches:
+        return _fail("offer_in_menu", f"{p.offer_type} on {p.category or 'store-wide'} was not one of the "
+                                      f"{len(ctx.allowed_options)} options offered")
+    top = max(float(o.get("max_value") or 0) for o in matches)
+    if p.value > top + 1e-9:
+        return _fail("offer_in_menu", f"value {p.value:g} is above the menu's max of {top:g}")
+    return _ok("offer_in_menu")
 
 
 def check_discount_caps(p, ctx, rules) -> CheckResult:
@@ -358,8 +383,20 @@ def check_margin(p, ctx, rules, cost: float) -> CheckResult:
 
 # ---------- message checks ----------
 _NUM = r"(\d[\d,]*(?:\.\d+)?)"
-PCT_RE = re.compile(_NUM + r"\s*(?:%|percent\b)", re.I)
-INR_RE = re.compile(r"(?:₹|\brs\.?|\binr)\s*" + _NUM + r"|" + _NUM + r"\s*(?:rupees|rupaye|/-)", re.I)
+PCT_RE = re.compile(_NUM + r"\s*(?:%|percent\b|per\s*cent\b)", re.I)
+INR_RE = re.compile(r"(?:₹|\brs\.?|\binr)\s*" + _NUM + r"(\s*k\b)?|" + _NUM + r"(\s*k)?\s*(?:rupees|rupaye|/-)", re.I)
+WORD_NUMBERS = {"five": 5, "ten": 10, "fifteen": 15, "twenty": 20, "twenty five": 25, "twenty-five": 25,
+                "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "seventy five": 75,
+                "seventy-five": 75, "eighty": 80, "ninety": 90, "hundred": 100, "one hundred": 100}
+WORD_PCT_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, WORD_NUMBERS), key=len, reverse=True))
+                         + r")\s*(?:%|percent\b|per\s*cent\b)", re.I)
+HALF_RE = re.compile(r"\bhalf[\s-]*(?:price|off|rate)\b|\b50[\s-]*50\b|\baadh[ea]\s+(?:daam|keemat)", re.I)
+_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*"
+DATE_RE = re.compile(r"\b\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?" + _MONTH + r"\b|\b" + _MONTH
+                     + r"\s+\d{1,2}(?:st|nd|rd|th)?\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b", re.I)
+CODE_RE = re.compile(r"(?i:\b(?:code|coupon|promo)\b)\s*[:\-]?\s*[A-Z0-9][A-Z0-9-]{3,}\b")
+# Invisible and direction-changing characters can hide words from checks (and from people).
+HIDDEN_RE = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
 POINTS_RE = re.compile(_NUM + r"\s*(?:bonus\s+|reward\s+|extra\s+)?(?:points|pts)\b", re.I)
 DAYS_RE = re.compile(_NUM + r"\s*(?:days?|din)\b", re.I)
 CUSTOMER_ID_RE = re.compile(r"\bC\d{5}\b")
@@ -392,6 +429,19 @@ def _nums(regex: re.Pattern, text: str) -> list[float]:
     return out
 
 
+def _clean(text: str) -> str:
+    """What a reader actually sees: invisible characters removed, look-alike characters unified."""
+    return unicodedata.normalize("NFKC", HIDDEN_RE.sub("", text))
+
+
+def _inr_amounts(text: str) -> list[float]:
+    out = []
+    for m in INR_RE.finditer(text):
+        num, k = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        out.append(float(num.replace(",", "")) * (1000 if k else 1))
+    return out
+
+
 def _close(x: float, allowed: set[float]) -> bool:
     return any(abs(x - a) < 0.51 for a in allowed)
 
@@ -402,7 +452,7 @@ def check_message_length(p, ctx, rules) -> CheckResult:
 
 
 def check_banned_phrases(p, ctx, rules) -> CheckResult:
-    low = p.message.lower()
+    low = _clean(p.message).lower()
     hits = [ph for ph in rules.message.banned_phrases if ph.lower() in low]
     leaks = [m for m in INJECTION_MARKERS if m in low]
     reasons = [f"banned phrase '{h}'" for h in hits] + [f"looks like leaked instructions ('{m}')" for m in leaks]
@@ -411,11 +461,13 @@ def check_banned_phrases(p, ctx, rules) -> CheckResult:
 
 def check_numbers_match(p, ctx, rules) -> CheckResult:
     """Every number in the text must match the structured offer (no '50% off' when the offer is 10%)."""
-    text = p.message
+    text = _clean(p.message)
     reasons = []
 
     allowed_pct = {p.value} if p.offer_type == "percent_off" else set()
-    for x in _nums(PCT_RE, text):
+    worded = [float(WORD_NUMBERS[m.group(1).lower()]) for m in WORD_PCT_RE.finditer(text)]
+    halves = [50.0] * len(HALF_RE.findall(text))
+    for x in _nums(PCT_RE, text) + worded + halves:
         if not _close(x, allowed_pct):
             reasons.append(f"text says {x:g}% but the offer is " +
                            (f"{p.value:g}%" if allowed_pct else f"{p.offer_type}, not a % discount"))
@@ -425,7 +477,7 @@ def check_numbers_match(p, ctx, rules) -> CheckResult:
         allowed_inr.add(p.value)
     if p.offer_type == "percent_off":
         allowed_inr.add(rules.global_.max_flat_discount_inr)  # "up to Rs 500"
-    for x in _nums(INR_RE, text):
+    for x in _inr_amounts(text):
         if not _close(x, allowed_inr):
             reasons.append(f"text mentions Rs {x:g}, which is not the offer value, minimum order or a cart price")
 
@@ -443,11 +495,15 @@ def check_numbers_match(p, ctx, rules) -> CheckResult:
         if not _close(x, allowed_days):
             reasons.append(f"text mentions {x:g} days but the offer is valid for {p.expiry_days} days")
 
+    for m in DATE_RE.finditer(text):
+        reasons.append(f"text states a date ('{m.group(0)}'); the card shows the real expiry date")
+        break
+
     return _fail("message_numbers_match", *reasons) if reasons else _ok("message_numbers_match")
 
 
 def check_privacy(p, ctx, rules) -> CheckResult:
-    text = p.message
+    text = _clean(p.message)
     reasons = []
     ids = {i for i in CUSTOMER_ID_RE.findall(text) if i != ctx.customer_id}
     if ids:
@@ -467,9 +523,13 @@ def check_privacy(p, ctx, rules) -> CheckResult:
 
 
 def check_claims(p, ctx, rules) -> CheckResult:
-    low = p.message.lower()
+    text = _clean(p.message)
+    low = text.lower()
     reasons = [f"unsupported claim '{c}'" for c in rules.message.banned_claims if c.lower() in low]
-    if FREE_DELIVERY_RE.search(p.message) and p.offer_type != "free_delivery":
+    code = CODE_RE.search(text)
+    if code:
+        reasons.append(f"makes up a coupon code ('{code.group(0)}'); the app adds the real code")
+    if FREE_DELIVERY_RE.search(text) and p.offer_type != "free_delivery":
         reasons.append("promises free delivery but the offer is not free delivery")
     if "early access" in low and p.offer_type != "early_access":
         reasons.append("promises early access but the offer is not early access")
@@ -485,6 +545,8 @@ def check_claims(p, ctx, rules) -> CheckResult:
 
 def check_style(p, ctx, rules) -> CheckResult:
     reasons = []
+    if HIDDEN_RE.search(p.message):
+        reasons.append("contains invisible or text-direction characters")
     n_emoji = len(EMOJI_RE.findall(p.message))
     if n_emoji > rules.message.max_emojis:
         reasons.append(f"{n_emoji} emojis (max {rules.message.max_emojis})")
@@ -521,6 +583,7 @@ def validate(raw: OfferProposal | dict | str, ctx: ValidationContext, rules: Rul
     checks = [
         _ok("schema"),
         check_offer_type(p, ctx, rules),
+        check_offer_in_menu(p, ctx, rules),
         check_discount_caps(p, ctx, rules),
         check_flat_and_min_order(p, ctx, rules),
         check_budget(p, ctx, rules, cost),

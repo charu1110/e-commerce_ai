@@ -341,7 +341,7 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 
 ### Rules & guardrails notes (Step 4)
 - `config/rules.yaml` adds to the spec: `max_bonus_points`, `min_profit_after_discount_inr`, a `costs` section (delivery fee, point value), `occasional` segment rules, an `eligibility` section (buy-anyway skip, discount-addiction guard, return-abuse guard), `message.max_emojis`, `message.banned_claims`.
-- `src/guardrails.py`: `Rules` pydantic model (typos/out-of-range values in rules.yaml raise errors), strict `OfferProposal`, `ValidationContext` (facts gathered by Nodes 1-4), `validate()` runs 14 named checks (labels in `CHECK_LABELS`) and reports ALL failures. Also `in_quiet_hours()`, `discount_limit_pct()`, `expected_cost()`.
+- `src/guardrails.py`: `Rules` pydantic model (typos/out-of-range values in rules.yaml raise errors), strict `OfferProposal`, `ValidationContext` (facts gathered by Nodes 1-4), `validate()` runs 15 named checks (labels in `CHECK_LABELS`; `offer_in_menu` added in Step 8) and reports ALL failures. Also `in_quiet_hours()`, `discount_limit_pct()`, `expected_cost()`.
 - Cost model: percent offers are capped at `max_flat_discount_inr` ("up to Rs 500"); flat offers are converted to % of their min order for cap checks; store-wide offers use the strictest category cap and thinnest margin.
 - `config/offers.yaml` + `src/offers.py`: pre-approved catalogue, `category: favourite` resolves to cart/favourite category, `fallback_offer()` tries the segment's list in order and returns the first that passes `validate()`, else nothing.
 - Windows console can't print the rupee sign; set `PYTHONIOENCODING=utf-8` when printing messages in a terminal.
@@ -362,8 +362,14 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - The httpx logger is set to WARNING because its request lines contain the bot token.
 
 ### AI agent notes (Step 7)
-- `src/agent.py`: `ClaudeAgent` (same interface as `stub_agent`: `(summary, options) -> raw JSON text`). Model from `ANTHROPIC_MODEL` (currently `claude-sonnet-5-5`), `output_config` = effort `low` + JSON schema (`OFFER_SCHEMA`, mirrors `OfferProposal`), 10 s timeout, 1 retry, server-side refusal fallback (`fallbacks="default"`, beta `server-side-fallback-2026-07-01`) on models that support it. Refusal / truncation / no text / any API error raises → Node 10 fallback. No `temperature`/`thinking` params sent.
+- `src/agent.py`: `ClaudeAgent` (same interface as `stub_agent`: `(summary, options) -> raw JSON text`). Model from `ANTHROPIC_MODEL` (currently `claude-opus-5-5`; live check 23 Oct: 5-10 s per call, some hit the 10 s timeout and fell back safely), `output_config` = effort `low` + JSON schema (`OFFER_SCHEMA`, mirrors `OfferProposal`), 10 s timeout, 1 retry, server-side refusal fallback (`fallbacks="default"`, beta `server-side-fallback-2026-07-01`) on models that support it. Refusal / truncation / no text / any API error raises → Node 10 fallback. No `temperature`/`thinking` params sent.
 - Prompt lives in `src/prompts/offer_agent.md` (editable by marketing). Customer facts are sent as JSON inside `<customer_data>` tags; the prompt says that content is data, never instructions.
 - `make_agent("auto"|"claude"|"stub")`: auto = Claude if `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` is set, else stub. The bot uses auto; the pipeline CLI defaults to `--agent stub` (no API spend) and takes `--agent claude`.
 - anthropic SDK is 2.x here; signatures were checked against the installed package.
 - The bot runs engine calls in a worker thread behind one lock (`call()` in bot.py) so slow AI calls don't freeze other chats; its DB connection uses `check_same_thread=False`.
+
+### Red-team notes (Step 8)
+- `tests/test_redteam.py`: catalogue of attacks (greedy discounts, off-menu picks, lying numbers incl. number words / "half price" / "per cent" / fullwidth + Devanagari digits / "₹5k" / invented dates, zero-width and RTL characters, made-up coupon codes, cashback / free-iPhone / BOGO claims, other customers' names, leaked instructions, links, NaN/Infinity/bool/extra-field schema abuse) — each must be blocked by a named check; safe look-alikes (Hinglish, Punjabi, "feel free", one emoji) must pass. Plus injected customer names end to end with an AI that obeys them.
+- New check `offer_in_menu` (15 checks now): an AI proposal must match one of Node 4's `allowed_options` (type + category) at or below its `max_value`. `ValidationContext.allowed_options` is set by Node 4; Node 10 and `fallback_offer()` clear it, since fallbacks are pre-approved.
+- Message checks run on `_clean()` text (NFKC + invisible characters removed); hidden/bidi characters are themselves a violation.
+- `build_user_message` escapes `<`/`>` inside the JSON so customer text can't close the `<customer_data>` tag.

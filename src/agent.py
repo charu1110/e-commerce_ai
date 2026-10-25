@@ -151,11 +151,16 @@ class AgentRefusal(RuntimeError):
     """Claude declined the request; the pipeline falls back to a pre-approved offer."""
 
 
+def _data_json(obj) -> str:
+    """JSON with < and > escaped, so text inside the data can never close our tags."""
+    return json.dumps(obj, ensure_ascii=False, indent=1).replace("<", "\\u003c").replace(">", "\\u003e")
+
+
 def build_user_message(summary: dict, options: list[dict]) -> str:
     """Customer facts go in as JSON inside tags, so they are read as data, never as instructions."""
     return (
-        "<customer_data>\n" + json.dumps(summary, ensure_ascii=False, indent=1) + "\n</customer_data>\n\n"
-        "<allowed_options>\n" + json.dumps(options, ensure_ascii=False, indent=1) + "\n</allowed_options>\n\n"
+        "<customer_data>\n" + _data_json(summary) + "\n</customer_data>\n\n"
+        "<allowed_options>\n" + _data_json(options) + "\n</allowed_options>\n\n"
         "Write the offer as JSON."
     )
 

@@ -30,6 +30,7 @@ Pick exactly one option from `<allowed_options>` and fill in:
 - Language: `english` means plain English. `hinglish` means a natural Hindi-English mix written in Roman letters (for example "Aapke liye kuch special hai!"). `punjabi` means English with a friendly Punjabi touch written in Roman letters (for example "Sat Sri Akal" or "ji").
 - At most one emoji.
 - State the offer, the minimum order and the validity, and make every number match the offer exactly: write the percentage as "15%", rupee amounts as "₹999", points as "200 bonus points", and the validity as "Valid for 5 days". Do not write any other numbers, except the customer's own points balance or days since their last order.
+- Do not write dates (the card shows the expiry date) and do not use number words like "fifty percent" or "half price".
 - Do not invent anything: no prices, product claims, stock levels ("only 2 left"), "lowest price", "guaranteed", links, coupon codes (the app adds the code), or other customers. Only promise free delivery if the offer is free delivery, and only mention early access if the offer is early access.
 
 ## The reason

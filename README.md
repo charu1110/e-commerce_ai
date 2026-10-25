@@ -49,7 +49,7 @@ hidden personas (80-100%).
 | `config/occasions.yaml` | Festival calendar |
 
 Every offer, whether written by the AI or taken from `offers.yaml`, is checked by `src/guardrails.py`
-(plain Python, no AI) against 14 rules before it is sent: offer type allowed for the segment, discount
+(plain Python, no AI) against 15 rules before it is sent: offer type allowed for the segment, discount
 caps, flat cap and minimum order, daily budget, customer eligibility (opt-out, holdout, cooldown, just
 bought, kill switch, discount-addiction and return-abuse guards), expiry and stacking, profit after
 discount, and message checks (length, banned phrases, numbers match the offer, no other customer's
@@ -108,6 +108,14 @@ python -m src.bot
 
 Offer cards have **Claim 🎁**, **Not now** and **Why this offer?** buttons; every tap is logged.
 If you see SSL certificate errors, make sure `truststore` from `requirements.txt` is installed.
+
+## Red-team tests
+
+`tests/test_redteam.py` attacks the system on purpose and checks every attack is blocked: 90% off,
+offers that weren't on the AI's menu, text that lies about the numbers ("fifty percent", "half price",
+"₹5k", fullwidth or Devanagari digits, invented dates), hidden zero-width characters, made-up coupon
+codes, cashback or free-iPhone claims, other customers' names, links, broken JSON, and customers whose
+*name* is a prompt-injection attack. Safe messages in English, Hinglish and Punjabi must still pass.
 
 ## Tests
 

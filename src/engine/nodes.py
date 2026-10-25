@@ -15,6 +15,7 @@ import hashlib
 import html
 import json
 import secrets
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -215,6 +216,7 @@ def eligibility_check(s: State, deps: Deps) -> State:
             return s
 
     s.allowed_options = allowed_options(ctx, deps.rules)
+    ctx.allowed_options = s.allowed_options  # the validator checks the AI picked from this menu
     if not s.allowed_options:
         s.eligible, s.skip_reason = False, f"No offer type is allowed for this {s.segment} customer right now."
         return s
@@ -270,6 +272,7 @@ def fallback_offer(s: State, deps: Deps) -> State:
     """Node 10 (rules): safest pre-approved offer for the segment that passes every rule, else nothing."""
     s.path.append("10 Fallback offer")
     s.fallback_used = True
+    s.ctx = replace(s.ctx, allowed_options=None)  # fallbacks are pre-approved, not picked from the AI's menu
     fb = pick_fallback(s.ctx, deps.rules, deps.catalogue)
     s.fallback_tried = fb.tried
     if fb.found:

@@ -55,4 +55,5 @@ message:
   max_length_chars: 400
   max_emojis: 1                 # keep it classy: at most one emoji
   banned_phrases: ["last chance ever", "guaranteed", "free money", "100% off", "lowest price ever"]
-  banned_claims: ["lowest price", "100% original", "limited stock", "only few left", "best in india", "free gift"]
+  banned_claims: ["lowest price", "100% original", "limited stock", "only few left", "best in india", "free gift",
+                  "cashback", "free iphone", "free sample", "free product", "buy one get one", "bogo"]
