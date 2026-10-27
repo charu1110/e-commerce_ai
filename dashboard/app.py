@@ -11,8 +11,10 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shutil
 import sqlite3
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -40,7 +42,6 @@ from src.simulator import RESULTS, SIM_DB  # noqa: E402
 DEMO_DB, DEMO_RESULTS = ROOT / "demo" / "demo.db", ROOT / "demo" / "simulation_results.json"
 SIM_PATH = SIM_DB if Path(SIM_DB).exists() else DEMO_DB
 RESULTS_PATH = RESULTS if Path(RESULTS).exists() else DEMO_RESULTS
-LIVE_PATH = DB_PATH if Path(DB_PATH).exists() else DEMO_DB
 
 # Validated palette (dataviz reference): blue / orange categorical, blue<->red diverging.
 BLUE, ORANGE, RED, MUTED = "#2a78d6", "#eb6834", "#e34948", "#898781"
@@ -63,6 +64,26 @@ def labels_for(chart, field: str, fmt: str):
     """Value labels in text ink (not the bar colour), placed just past the bar end."""
     return chart.mark_text(align="left", dx=4, color=ink()).encode(
         text=alt.Text(f"{field}:Q", format=fmt), color=alt.value(ink()))
+
+
+@st.cache_resource
+def preview_db() -> str:
+    """Database the rule editor previews on: the live one, or a clean copy of the demo data.
+
+    The demo copy holds the simulated campaign's decisions (today's budget already spent, many
+    customers in cooldown), so a preview on it would show almost nothing. A copy without past
+    decisions shows what the rules would do from a fresh start.
+    """
+    if Path(DB_PATH).exists():
+        return str(DB_PATH)
+    clean = Path(tempfile.gettempdir()) / "offer_engine_preview.db"
+    shutil.copy(DEMO_DB, clean)
+    c = sqlite3.connect(clean)
+    c.execute("DELETE FROM offer_events")
+    c.execute("DELETE FROM decision_log")
+    c.commit()
+    c.close()
+    return str(clean)
 
 
 @st.cache_resource
@@ -444,7 +465,7 @@ def editor_page():
     key = json.dumps(new, sort_keys=True, default=str)
     if st.button("Preview impact on today's customers", type="primary"):
         with st.spinner("Running today's decisions with the current and the new rules…"):
-            conn = db_connect(str(LIVE_PATH))
+            conn = db_connect(preview_db())
             result = preview_change(conn, load_rules(), new_rules, sample=1000)
             conn.close()
         st.session_state["preview"] = (key, result)

@@ -2,10 +2,10 @@
 
 | # | Item | Link / location |
 |---|---|---|
-| 1 | **Deployed link** | Dashboard: `[Streamlit Cloud URL]` · Telegram bot: https://t.me/Offer_genrate_bot (answers while the bot runs) |
+| 1 | **Deployed link** | Dashboard: https://e-commerceai-zu43k8a88fezpfhw8dafta.streamlit.app · Telegram bot: https://t.me/Offer_genrate_bot (answers while the bot runs) |
 | 2 | **GitHub repository (public)** | https://github.com/charu1110/e-commerce_ai |
 | 3 | **Testing dataset** | `sample_data/` (300 customers as CSV, see its README) and `demo/demo.db` (all 5,000 customers + the 14-day simulated campaign). Full data: `python -m src.generate_data --customers 5000 --seed 42` |
-| 4 | **Presentation** | `[Deck link]` (also downloadable as PowerPoint / PDF) |
+| 4 | **Presentation** | https://claude.ai/artifact/3D9i9ozB3oi7AFwaEGzTaV (also downloadable as PowerPoint / PDF) |
 | 5 | **Additional resources** | `README.md` (quick start, features, screenshots) · `docs/DEMO.md` (walkthrough) · `docs/screenshots/` · `pytest -q` (275 tests, incl. `tests/test_redteam.py`) |
 
 ## For evaluators: test in 3 minutes

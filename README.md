@@ -9,6 +9,8 @@ before it is sent. The AI is never the judge of its own output.
 
 *Punjab Jobs AI Bootcamp · J-PAL South Asia · Hackathon 2*
 
+**Live dashboard:** https://e-commerceai-zu43k8a88fezpfhw8dafta.streamlit.app · **Telegram bot:** https://t.me/Offer_genrate_bot
+
 ![Results dashboard](docs/screenshots/01-results.jpg)
 
 ## Highlights
