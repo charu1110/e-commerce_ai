@@ -105,6 +105,10 @@ Run `python -m src.bot`, open the bot, send `/start` and pick a shopper type.
 | `/stop` / `/resume` | Opt out of / back into offers |
 | `/whoami` | Your chat id (for `ADMIN_CHAT_IDS`) |
 
+| Who you are | Offer card (written by Claude) | Why this offer? |
+|---|---|---|
+| ![Who you are](docs/screenshots/tg-1-who-you-are.jpg) | ![Offer card](docs/screenshots/tg-2-offer-card.jpg) | ![Why this offer](docs/screenshots/tg-3-why-this-offer.jpg) |
+
 **Admins** (chat ids in `ADMIN_CHAT_IDS`): `/admin` (today's stats with Pause / Resume buttons),
 `/audit C00123` (one customer's decision trail), `/pause` / `/unpause` (kill switch).
 
