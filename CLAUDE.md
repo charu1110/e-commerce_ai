@@ -403,3 +403,8 @@ Holdout vs treated chart, what-if slider for discount cap, customer explorer tim
 - `reporting.skip_reasons` merges variants ("..., so nothing was sent", per-segment escalation wording).
 - README rewritten (highlights, screenshots in `docs/screenshots/`, quick start); presentation walkthrough in `docs/DEMO.md`. Git history checked: no `.env`, databases or secret-looking strings ever committed.
 - Streamlit doesn't reload imported `src/` modules on page refresh: restart the server after changing them.
+
+### Submission notes (27 Oct)
+- `demo/demo.db` (35 MB, built by `scripts/build_demo_data.py` from `data/simulation.db`, no sessions/cart_events) + `demo/simulation_results.json` are committed; the dashboard falls back to them when `data/*.db` are missing (Streamlit Cloud). `requirements.txt` is pinned to the tested versions.
+- `sample_data/` (300-customer CSVs, `scripts/export_sample_data.py`) is the testing dataset. `SUBMISSION.md` lists the five submission items.
+- Deck: Slides artifact https://claude.ai/artifact/3D9i9ozB3oi7AFwaEGzTaV (15 slides; Telegram screenshots tg-1..tg-4 still to add on slides f-bot, f-why, f-ladder).

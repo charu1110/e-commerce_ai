@@ -76,6 +76,19 @@ writes one row to the audit log:
 - **Follow-ups:** an ignored offer is followed by free delivery, then 10%, then 15%, then stop.
   "Not now" is respected.
 
+## Live dashboard (Streamlit Community Cloud)
+
+The repo ships a slim demo database, `demo/demo.db` (35 MB: all 5,000 customers, their orders and the
+14-day simulated campaign), so the dashboard runs on a fresh clone with no setup. To host it:
+
+1. Push this repo to GitHub (public).
+2. Go to share.streamlit.io, sign in with GitHub, click **Create app**.
+3. Repository: this repo · Branch: `main` · Main file: `dashboard/app.py` · Advanced settings: Python 3.10 or 3.11.
+4. Click **Deploy** (first start takes a few minutes). No secrets are needed for the dashboard.
+
+Rebuild the demo database after a new simulation with `python scripts/build_demo_data.py`.
+The testing dataset for evaluators is in `sample_data/` (see its README).
+
 ## Telegram bot
 
 Run `python -m src.bot`, open the bot, send `/start` and pick a shopper type.

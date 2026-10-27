@@ -35,6 +35,13 @@ from src.occasions import load_calendar  # noqa: E402
 from src.segments import assign_segment  # noqa: E402
 from src.simulator import RESULTS, SIM_DB  # noqa: E402
 
+# The full databases are git-ignored (100+ MB). When they're missing (e.g. on Streamlit Cloud),
+# fall back to the slim demo copy shipped in demo/ (built by scripts/build_demo_data.py).
+DEMO_DB, DEMO_RESULTS = ROOT / "demo" / "demo.db", ROOT / "demo" / "simulation_results.json"
+SIM_PATH = SIM_DB if Path(SIM_DB).exists() else DEMO_DB
+RESULTS_PATH = RESULTS if Path(RESULTS).exists() else DEMO_RESULTS
+LIVE_PATH = DB_PATH if Path(DB_PATH).exists() else DEMO_DB
+
 # Validated palette (dataviz reference): blue / orange categorical, blue<->red diverging.
 BLUE, ORANGE, RED, MUTED = "#2a78d6", "#eb6834", "#e34948", "#898781"
 FUNNEL_RAMP = ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"]  # ordinal, light -> dark
@@ -83,7 +90,7 @@ def bar(df: pd.DataFrame, x: str, y: str, color: str = BLUE, fmt: str = ",.0f", 
 
 # ------------------------------------------------------------------ sidebar
 st.sidebar.title("🎁 Offer Engine")
-sources = {"Simulation (campaign with holdout)": str(SIM_DB), "Live (Telegram bot)": str(DB_PATH)}
+sources = {"Simulation (campaign with holdout)": str(SIM_PATH), "Live (Telegram bot)": str(DB_PATH)}
 available = {k: v for k, v in sources.items() if Path(v).exists()}
 if not available:
     st.error("No database found. Run `python -m src.generate_data` first.")
@@ -93,14 +100,14 @@ db_path = available[source]
 page = st.sidebar.radio("Page", ["Results", "Audit log", "Customer explorer", "Rules & calendar", "Rule editor"])
 st.sidebar.caption("Simulation: `python -m src.simulator --days 14`\n\nRules live in `config/*.yaml`.")
 log = load_log(db_path)
-is_sim = db_path == str(SIM_DB)
+is_sim = db_path == str(SIM_PATH)
 
 
 # ================================================================== Results
 def results_page():
     st.title("Results")
     s = reporting.summary(log)
-    res = reporting.load_results(RESULTS) if is_sim else None
+    res = reporting.load_results(RESULTS_PATH) if is_sim else None
 
     if res:
         st.caption(f"{res['days']}-day simulated campaign from {res['start']} on {res['customers']:,} customers. "
@@ -437,7 +444,7 @@ def editor_page():
     key = json.dumps(new, sort_keys=True, default=str)
     if st.button("Preview impact on today's customers", type="primary"):
         with st.spinner("Running today's decisions with the current and the new rules…"):
-            conn = db_connect(str(DB_PATH))
+            conn = db_connect(str(LIVE_PATH))
             result = preview_change(conn, load_rules(), new_rules, sample=1000)
             conn.close()
         st.session_state["preview"] = (key, result)

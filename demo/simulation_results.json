@@ -1,0 +1,221 @@
+{
+ "days": 14,
+ "start": "2026-10-25",
+ "customers": 2000,
+ "funnel": {
+  "decisions": 28000,
+  "had_trigger": 27176,
+  "eligible": 7498,
+  "offers_sent": 2787,
+  "claimed": 657
+ },
+ "treated": 1617,
+ "holdout": 177,
+ "conv_treated": 0.46320346320346323,
+ "conv_holdout": 0.23728813559322035,
+ "uplift_pp": 22.59153276102429,
+ "incremental_orders": 365.30508474576277,
+ "discount_cost": 87194.75304594872,
+ "wasted_cost": 23468.634215148744,
+ "extra_margin": 298300.1959749356,
+ "roi": 211105.4429289869,
+ "by_segment": [
+  {
+   "segment": "deal_hunter",
+   "treated": 239,
+   "holdout": 27,
+   "conv_treated": 0.653,
+   "conv_holdout": 0.37,
+   "uplift_pp": 28.2,
+   "discount_cost": 19452.0,
+   "extra_margin": 35082.0
+  },
+  {
+   "segment": "hibernating",
+   "treated": 255,
+   "holdout": 28,
+   "conv_treated": 0.157,
+   "conv_holdout": 0.0,
+   "uplift_pp": 15.7,
+   "discount_cost": 7550.0,
+   "extra_margin": 28908.0
+  },
+  {
+   "segment": "lapsing",
+   "treated": 268,
+   "holdout": 34,
+   "conv_treated": 0.5,
+   "conv_holdout": 0.176,
+   "uplift_pp": 32.4,
+   "discount_cost": 31530.0,
+   "extra_margin": 77269.0
+  },
+  {
+   "segment": "loyal",
+   "treated": 290,
+   "holdout": 30,
+   "conv_treated": 0.493,
+   "conv_holdout": 0.4,
+   "uplift_pp": 9.3,
+   "discount_cost": 5225.0,
+   "extra_margin": 17098.0
+  },
+  {
+   "segment": "new",
+   "treated": 146,
+   "holdout": 15,
+   "conv_treated": 0.432,
+   "conv_holdout": 0.333,
+   "uplift_pp": 9.8,
+   "discount_cost": 4589.0,
+   "extra_margin": 6956.0
+  },
+  {
+   "segment": "occasional",
+   "treated": 308,
+   "holdout": 34,
+   "conv_treated": 0.416,
+   "conv_holdout": 0.029,
+   "uplift_pp": 38.6,
+   "discount_cost": 17719.0,
+   "extra_margin": 84997.0
+  },
+  {
+   "segment": "vip",
+   "treated": 111,
+   "holdout": 9,
+   "conv_treated": 0.766,
+   "conv_holdout": 0.889,
+   "uplift_pp": -12.3,
+   "discount_cost": 1131.0,
+   "extra_margin": 0.0
+  }
+ ],
+ "by_offer_type": [
+  {
+   "offer_type": "bonus_points",
+   "sent": 471,
+   "redeemed": 95,
+   "cost": 4725.0,
+   "claim_rate": 0.202
+  },
+  {
+   "offer_type": "early_access",
+   "sent": 135,
+   "redeemed": 41,
+   "cost": 0.0,
+   "claim_rate": 0.304
+  },
+  {
+   "offer_type": "flat_off",
+   "sent": 2,
+   "redeemed": 1,
+   "cost": 200.0,
+   "claim_rate": 0.5
+  },
+  {
+   "offer_type": "free_delivery",
+   "sent": 801,
+   "redeemed": 104,
+   "cost": 5096.0,
+   "claim_rate": 0.13
+  },
+  {
+   "offer_type": "percent_off",
+   "sent": 1378,
+   "redeemed": 416,
+   "cost": 77173.7530459487,
+   "claim_rate": 0.302
+  }
+ ],
+ "blocked_by": {
+  "daily_budget": 2957
+ },
+ "fallback_rate": 0.008611410118406888,
+ "daily": [
+  {
+   "day": 1,
+   "date": "2026-10-25",
+   "offers": 93,
+   "claims_so_far": 26
+  },
+  {
+   "day": 2,
+   "date": "2026-10-26",
+   "offers": 83,
+   "claims_so_far": 53
+  },
+  {
+   "day": 3,
+   "date": "2026-10-27",
+   "offers": 88,
+   "claims_so_far": 76
+  },
+  {
+   "day": 4,
+   "date": "2026-10-28",
+   "offers": 192,
+   "claims_so_far": 125
+  },
+  {
+   "day": 5,
+   "date": "2026-10-29",
+   "offers": 190,
+   "claims_so_far": 184
+  },
+  {
+   "day": 6,
+   "date": "2026-10-30",
+   "offers": 254,
+   "claims_so_far": 273
+  },
+  {
+   "day": 7,
+   "date": "2026-10-31",
+   "offers": 281,
+   "claims_so_far": 369
+  },
+  {
+   "day": 8,
+   "date": "2026-11-01",
+   "offers": 271,
+   "claims_so_far": 459
+  },
+  {
+   "day": 9,
+   "date": "2026-11-02",
+   "offers": 318,
+   "claims_so_far": 556
+  },
+  {
+   "day": 10,
+   "date": "2026-11-03",
+   "offers": 111,
+   "claims_so_far": 578
+  },
+  {
+   "day": 11,
+   "date": "2026-11-04",
+   "offers": 195,
+   "claims_so_far": 628
+  },
+  {
+   "day": 12,
+   "date": "2026-11-05",
+   "offers": 192,
+   "claims_so_far": 646
+  },
+  {
+   "day": 13,
+   "date": "2026-11-06",
+   "offers": 214,
+   "claims_so_far": 657
+  },
+  {
+   "day": 14,
+   "date": "2026-11-07",
+   "offers": 305,
+   "claims_so_far": 657
+  }
+ ]
+}
