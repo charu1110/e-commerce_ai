@@ -147,7 +147,7 @@ def results_page():
                 tooltip=["group", alt.Tooltip("bought:Q", format=".1%"), alt.Tooltip("n:Q", title="customers")])
             labels = labels_for(chart, "bought", ".1%")
             st.altair_chart((chart.mark_bar(cornerRadiusEnd=4, size=26) + labels).properties(height=130)
-                            .configure_view(stroke=None), use_container_width=True)
+                            .configure_view(stroke=None), width="stretch")
             st.caption(f"{res['treated']:,} customers got offers, {res['holdout']:,} were held back on purpose.")
         with right:
             st.subheader("Money: spent vs gained")
@@ -162,7 +162,7 @@ def results_page():
                 tooltip=["item", alt.Tooltip("inr:Q", format=",.0f", title="₹")])
             labels = labels_for(chart, "inr", ",.0f")
             st.altair_chart((chart.mark_bar(cornerRadiusEnd=4, size=16) + labels).properties(height=150)
-                            .configure_view(stroke=None), use_container_width=True)
+                            .configure_view(stroke=None), width="stretch")
 
         st.subheader("Uplift by customer segment")
         seg = pd.DataFrame(res["by_segment"]).dropna(subset=["uplift_pp"])
@@ -178,11 +178,11 @@ def results_page():
                          alt.Tooltip("discount_cost:Q", format=",.0f"), alt.Tooltip("extra_margin:Q", format=",.0f")])
             st.altair_chart((chart.mark_bar(cornerRadiusEnd=4, size=18) + labels_for(chart, "uplift_pp", "+.1f"))
                             .properties(height=32 * len(seg))
-                            .configure_view(stroke=None), use_container_width=True)
+                            .configure_view(stroke=None), width="stretch")
             table = pd.DataFrame(res["by_segment"]).rename(columns={
                 "conv_treated": "bought (offers)", "conv_holdout": "bought (holdout)", "uplift_pp": "uplift (pts)",
                 "discount_cost": "discount ₹", "extra_margin": "extra margin ₹"})
-            st.dataframe(table, hide_index=True, use_container_width=True)
+            st.dataframe(table, hide_index=True, width="stretch")
             st.caption("Small holdout groups are noisy: read segments with few holdout customers with care.")
 
     left, right = st.columns(2)
@@ -197,14 +197,14 @@ def results_page():
                 tooltip=["stage", alt.Tooltip("count:Q", format=",")])
             labels = labels_for(chart, "count", ",")
             st.altair_chart((chart.mark_bar(cornerRadiusEnd=4, size=22) + labels).properties(height=190)
-                            .configure_view(stroke=None), use_container_width=True)
+                            .configure_view(stroke=None), width="stretch")
         else:
             st.caption("No decisions yet. Use the bot (/myoffer) or run the simulator.")
     with right:
         st.subheader("Why customers got no offer")
         sk = reporting.skip_reasons(log)
         if not sk.empty:
-            st.altair_chart(bar(sk, "customers", "reason", color=MUTED), use_container_width=True)
+            st.altair_chart(bar(sk, "customers", "reason", color=MUTED), width="stretch")
         else:
             st.caption("Nobody has been skipped yet.")
 
@@ -215,14 +215,14 @@ def results_page():
         if b.empty:
             st.caption("No AI proposal has been blocked yet.")
         else:
-            st.altair_chart(bar(b, "times", "rule", color=ORANGE), use_container_width=True)
+            st.altair_chart(bar(b, "times", "rule", color=ORANGE), width="stretch")
         st.caption(f"Fallback rate: {s['fallback_rate']:.0%} of offers came from the pre-approved list.")
     with right:
         st.subheader("Offers by type")
         t = reporting.offers_by(log, "offer_type")
         if not t.empty:
             st.dataframe(t.rename(columns={"offer_type": "offer", "claim_rate": "claim rate"}), hide_index=True,
-                         use_container_width=True)
+                         width="stretch")
         else:
             st.caption("No offers sent yet.")
 
@@ -246,7 +246,7 @@ def audit_page():
     view = view.sort_values("decision_id", ascending=False).head(limit)
     cols = ["decision_id", "ts", "customer_id", "trigger", "segment", "status", "offer_type", "offer_value",
             "final_offer_id", "coupon_code", "expected_cost", "skip_reason"]
-    st.dataframe(view[cols], hide_index=True, use_container_width=True, height=360)
+    st.dataframe(view[cols], hide_index=True, width="stretch", height=360)
 
     ids = view["decision_id"].tolist()
     if ids:
@@ -260,7 +260,7 @@ def audit_page():
             checks = pd.DataFrame(json.loads(row["validator_result"])["checks"])
             checks["check"] = checks["name"].map(lambda n: CHECK_LABELS.get(n, n))
             checks["result"] = checks["passed"].map({True: "✅ pass", False: "❌ fail"})
-            st.dataframe(checks[["check", "result", "reason"]], hide_index=True, use_container_width=True)
+            st.dataframe(checks[["check", "result", "reason"]], hide_index=True, width="stretch")
         violations = json.loads(row["violations"] or "[]")
         if violations:
             st.warning("AI proposal blocked:\n\n" + "\n".join(f"- {v}" for v in violations))
@@ -296,14 +296,14 @@ def customer_page():
             x=alt.X("yearmonth(month):O", title=None, axis=alt.Axis(format="%b %y", labelAngle=0)),
             y=alt.Y("net_amount:Q", title="₹", axis=alt.Axis(grid=True)),
             tooltip=[alt.Tooltip("month:T", format="%b %Y"), alt.Tooltip("net_amount:Q", format=",.0f", title="₹")])
-        st.altair_chart(chart.properties(height=200).configure_view(stroke=None), use_container_width=True)
+        st.altair_chart(chart.properties(height=200).configure_view(stroke=None), width="stretch")
     st.subheader("Decisions for this customer")
     mine = log[log["customer_id"] == cid].sort_values("decision_id", ascending=False)
     if mine.empty:
         st.caption("No decisions yet.")
     else:
         st.dataframe(mine[["ts", "trigger", "status", "offer_type", "offer_value", "message_text", "skip_reason"]],
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
 
 
 # ================================================================== Rules & calendar
@@ -321,22 +321,22 @@ def rules_page():
     with left:
         st.subheader("Max discount by category")
         cats = pd.DataFrame(rules["category_max_discount_pct"].items(), columns=["category", "max %"])
-        st.altair_chart(bar(cats, "max %", "category"), use_container_width=True)
+        st.altair_chart(bar(cats, "max %", "category"), width="stretch")
     with right:
         st.subheader("What each segment may get")
         seg = pd.DataFrame([{"segment": k, "max discount %": v["max_discount_pct"],
                              "allowed offers": ", ".join(v["allowed_types"])}
                             for k, v in rules["segment_rules"].items()])
-        st.dataframe(seg, hide_index=True, use_container_width=True)
+        st.dataframe(seg, hide_index=True, width="stretch")
         st.subheader("Follow-up ladder (if an offer is ignored)")
-        st.dataframe(pd.DataFrame(rules["escalation_ladder"]), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(rules["escalation_ladder"]), hide_index=True, width="stretch")
     st.subheader("Festival calendar")
     cal = load_calendar()
     rows = [{"occasion": o.name, "from": a, "to": b, "demand boost": f"{o.demand_boost:g}x",
              "budget x": f"{o.budget_multiplier:g}", "categories": ", ".join(o.boosted_categories),
              "regions": ", ".join(o.regions) or "all"}
             for o in cal.occasions for a, b in o.windows if b >= date.today()]
-    st.dataframe(pd.DataFrame(rows).sort_values("from"), hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(rows).sort_values("from"), hide_index=True, width="stretch")
 
 
 # ================================================================== Rule editor
@@ -435,7 +435,7 @@ def editor_page():
         return
     st.subheader("Your changes")
     st.dataframe(pd.DataFrame(changes, columns=["rule", "now", "new"]).astype(str), hide_index=True,
-                 use_container_width=True)
+                 width="stretch")
     for err in errors:
         st.error(err)
     if errors:
@@ -466,13 +466,13 @@ def editor_page():
         st.markdown("**By segment**")
         seg = pd.DataFrame(pv.by_segment).rename(columns={"offers_old": "offers now", "offers_new": "offers new",
                                                           "cost_old": "₹ now", "cost_new": "₹ new"})
-        st.dataframe(seg, hide_index=True, use_container_width=True)
+        st.dataframe(seg, hide_index=True, width="stretch")
     with c2:
         st.markdown("**Examples of customers who would get something different**")
-        st.dataframe(pd.DataFrame(pv.examples), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(pv.examples), hide_index=True, width="stretch")
         if pv.new_skip_reasons:
             st.markdown("**Why some would now get nothing**")
-            st.dataframe(pd.DataFrame(pv.new_skip_reasons), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(pv.new_skip_reasons), hide_index=True, width="stretch")
     if st.button("Save these rules", type="primary"):
         try:
             backup = save_rules(new)
